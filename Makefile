@@ -14,7 +14,7 @@ BIN_DIR = bin
 #COMMON_PATHS = $(addprefix $(COM_DIR)/, $(COMMON_FILES))
 
 # List source files (ordered based on dependency)
-#SRC_FILES = plot.f90 
+#SRC_FILES = functions.f90 
 #SRC_PATHS = $(addprefix $(SRC_DIR)/, $(SRC_FILES))
 
 # Main
