@@ -1,5 +1,5 @@
 
-# make for Fortran Streamlines
+# make for NewPan. A Modified-Newtonian Panel Method 
 
 # Deactivate implicit rules
 .SUFFIXES:
@@ -10,12 +10,12 @@ COM_DIR = common
 BIN_DIR = bin
 
 # List common files (ordered based on dependency)
-#COMMON_FILES = dislin.f90
-#COMMON_PATHS = $(addprefix $(COM_DIR)/, $(COMMON_FILES))
+COMMON_FILES = json.f95 json_xtnsn.f95
+COMMON_PATHS = $(addprefix $(COM_DIR)/, $(COMMON_FILES))
 
 # List source files (ordered based on dependency)
-#SRC_FILES = functions.f90 
-#SRC_PATHS = $(addprefix $(SRC_DIR)/, $(SRC_FILES))
+SRC_FILES = flow.f90 base_geom.f90 panel.f90 vtk.f90 panel_solver.f90
+SRC_PATHS = $(addprefix $(SRC_DIR)/, $(SRC_FILES))
 
 # Main
 MAIN_PATH = src/main.f90
@@ -32,7 +32,7 @@ DEBUG_FLAGS = -fbounds-check -fbacktrace -g
 #DISLIN_LINUX = -I ./lib/dislin_linux/gf -L ./lib/dislin_linux/ -ldislin
 
 # Program name
-PROGRAM = main.exe
+PROGRAM = newpan.exe
 
 # Default make
 default:

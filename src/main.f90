@@ -1,255 +1,186 @@
 program main
-   
+
+    use json_mod
+    use json_xtnsn_mod
+    use panel_mod
+    use base_geom_mod
+    use vtk_mod
+    use panel_solver_mod
+    use flow_mod
+
     implicit none
 
-    ! Panel Type
-    type :: panel
-        real, dimension(3) :: normal, dC_f
-        integer, dimension(3) :: vert_ind
-        real :: cp, norm_mag, area
-        integer :: N=3
-    
-    
-        
-    
-    contains
-
-    end type panel
-
-    ! Vertex type
-    type :: vertex
-        integer :: ind
-        real, dimension(3) :: location
-        
-    
-    
-    contains
-        
-    
-    end type vertex
 
     ! Initialize variables
-    real :: gamma=1, m=100, c_pmax, c_p, pi=3.1415926, theta
-    real, dimension(3) :: freestream, norm, C_f
-    integer :: i, j, N=3, i1, i2, i3, unit, N_panels, N_verts
+    real :: gamma, m, c_pmax, pi=3.1415926, ref_area, count_rate, runtime
+    real, dimension(3) :: C_f=[0,0,0]
+    real, dimension(:), allocatable :: freestream
+    integer :: i, j, unit, N_panels, N_verts, start_count, end_count, i_unit
+
+    character(len=:), allocatable :: mesh_file, body_file, result_file, &
+                                    report_file, windward_method, leeward_method
+    character(100) :: input_file
+    type(flow) :: flows
     type(panel), dimension(:), allocatable :: panels
     type(vertex), dimension(:), allocatable :: vertices
-    character(len=:), allocatable :: mesh_file, result_file
-    character(len=200) :: dummy_read, line
-    real :: ref_area
-    real, dimension(:,:), allocatable :: vertex_locs
+    type(json_file) :: input_json
+    type(json_value), pointer :: flow_settings, &
+                                 geom_settings, &
+                                 solver_settings, &
+                                 output_settings, &
+                                 report_json, p_parent
 
+    logical :: exists, found
+
+
+    ! Initialize json
+    call json_initialize()
+
+    ! Get input file from command line
+    call getarg(1, input_file)
+    input_file = trim(input_file)
+
+    ! Get input file from user
+    if (input_file == '') then
+        write(*,*) "Please specity an input file:"
+        read(*,'(a)') input_file
+        input_file = trim(input_file)
+    end if
+
+    ! Check it exists
+    inquire(file=input_file, exist=exists)
+    if (.not. exists) then
+        write(*,*) "!!! the file ", input_file, " does not exist. Quitting..."
+        stop
+    end if
     
-    mesh_file = "meshes/random_sphere_ultra_fine_sample_8.vtk"
-    ref_area = pi*1**2
+    ! Start Timer
+    call system_clock(start_count, count_rate)
 
-    ! Open vtk
-    open(newunit=unit, file=mesh_file)
+    ! Load settings from input file
+    call input_json%load_file(filename=input_file)
+    call json_check()
+    call input_json%get('flow', flow_settings, found)
+    call input_json%get('geometry', geom_settings, found)
+    call input_json%get('solver', solver_settings, found)
+    call input_json%get('output', output_settings, found)
 
-        ! Determine number of vertices
-        read(unit,*) ! Header
-        read(unit,*) ! Header
-        read(unit,*) ! Header
-        read(unit,*) ! Header
-        read(unit,*) dummy_read, N_verts, dummy_read
+    ! Welcome message
+    write(*,*) ""
+    write(*,*) "      ------------------------------"
+    write(*,*) "     -----/  ___  ------------------------"
+    write(*,*) "    -----/  /   \         " 
+    write(*,*) "   -----|  |      \                  "
+    write(*,*) "  ------|  |   _    \     NewPan (c) 2023 USU Aerolab  "
+    write(*,*) " -------|  |  |_|    )               v1.0"   
+    write(*,*) "  ------|  |        /               "
+    write(*,*) "   -----|  |      /               "
+    write(*,*) "    -----\  \___/        " 
+    write(*,*) "     -----\       ------------------------"
+    write(*,*) "      -----------------------------"
+    write(*,*) ""
+    write(*,*) "Got input file: ", input_file
+    write(*,*) ""
+    write(*,*) ""
 
-        ! Allocate vertex arrays
-        allocate(vertex_locs(3,N_verts))
-        allocate(vertices(N_verts))
+    ! Initialize report JSON
+    call json_value_create(report_json)
+    call to_object(report_json, 'report')
+    call json_value_create(p_parent)
+    call to_object(p_parent, 'info')
+    call json_value_add(report_json, p_parent)
+    call json_value_add(p_parent, 'generated_by', 'NewPan (c) 2023 USU Aerolab')
+    call json_value_add(p_parent, 'executed', fdate())
+    nullify(p_parent)
+    
+    ! Obtain input settings
+    call json_xtnsn_get(output_settings, 'body_file', body_file, 'none')
+    call json_xtnsn_get(geom_settings, 'file', mesh_file, 'none')
+    call json_xtnsn_get(flow_settings, 'gamma', gamma, 1.)
+    call json_xtnsn_get(flow_settings, 'mach_number', m, 1.)
+    call json_get(flow_settings, 'freestream_direction', freestream, found)
+    call json_xtnsn_get(geom_settings, 'reference.area', ref_area, 1.)
+    call json_xtnsn_get(solver_settings, 'windward_method', windward_method, 'modified-newtonian')
+    call json_xtnsn_get(solver_settings, 'leeward_method', leeward_method, 'none')
 
-        ! Read One from each line
-        do i=1,N_verts
-            read(unit,*) vertex_locs(1,i), vertex_locs(2,i), vertex_locs(3,i)
-        end do
+    ! Read Surface mesh
+    call load_surface_vtk(mesh_file, N_verts, N_panels, vertices, panels)
 
-        ! Store array of vertices
-        do i = 1, N_verts
-            do j = 1,3
-
-                ! Store Locations
-                vertices(i)%location(j) = vertex_locs(j,i)
-            end do
-
-            ! Store index
-            vertices(i)%ind = i
-        end do
-
-        ! Get to start of polygons
-        read(unit, '(a)') line
-        do while (index(line, 'POLYGONS') == 0)
-            read(unit,'(a)') line
-        end do
-
-        ! Deternine number of panels
-        read(line,*) dummy_read, N_panels, dummy_read
-
-        ! Allocate panel array
-        allocate(panels(N_panels))
-
-        ! Read in panels
-        do i = 1, N_panels
-            
-            ! Get vertex indices
-            read(unit,'(a)') dummy_read
-
-            read(dummy_read,*) N, i1, i2, i3
-
-            panels(i)%vert_ind = [i1+1,i2+1,i3+1]
-
-            ! Calculate Normal
-            call calc_norm(panels(i))
-
-            ! Calculate Magnitude of normal
-            panels(i)%norm_mag = sqrt(sqrt(panels(i)%normal(1)**2 + panels(i)%normal(2)**2 + panels(i)%normal(3)**2))
-            
-
-            ! Calculate Panel Area
-            panels(i)%area = panels(i)%norm_mag/2
-
-        end do
-
-    ! Close vtk
-    close(unit)
-
-
-    freestream = [-100,0,0]
 
     ! Normalize freestream vector
     freestream = freestream/(sqrt(freestream(1)**2 + freestream(2)**2 + freestream(3)**2))
+
+    ! Calculate max pressure coefficient
+    call panel_solver_max_pressure(windward_method, gamma, m, c_pmax)
+
+    ! Calculate panel angles
+    call panel_solver_calc_angles(panels, freestream, pi, N_panels)
     
+    ! Calculate Prandtl meyer seperation
+    call panel_solver_calc_seperation(leeward_method, N_panels, panels, m, gamma)
 
-    ! Calculate max pressure coefficent    
-    c_pmax = (2/(gamma*m**2))*( (( (((gamma + 1)**2) * m**2 )/((4*gamma*m**2)-2*(gamma-1)))**(gamma/(gamma-1))) * &
-        ((1-gamma+(2*gamma*m**2))/(gamma+1)) -1)
+    ! Calculate pressures
+    call panel_solver_calc_pressures(freestream, gamma, leeward_method, N_panels, panels, m, pi, c_pmax)
     
+    ! Calculate force coefficients
+    call panel_solver_calc_forces(C_f, N_panels, panels, ref_area)
+    write(*,'(a20)') "Force Coefficients:"
+    write(*, '(a20, e14.6)') "  C_x:", C_f(1)
+    write(*, '(a20, e14.6)') "  C_y:", C_f(2)
+    write(*, '(a20, e14.6)') "  C_z:", C_f(3)
+    write(*,*)
 
-    ! Loop through and calculate pressure for all panels
-    do i = 1, N_panels
-        
-        norm = panels(i)%normal
-        
-        ! Normalize normal vector
-        norm = norm/(sqrt(norm(1)**2 + norm(2)**2 + norm(3)**2))
-        
-        ! Calculate Panel inclination with respect to the freestream
-        theta = acos(dot_product(freestream,norm))
-        
-        ! Check if panel faces freestream
-        if ( (theta <= pi/2) .and. (theta >= -pi/2) ) then
-            c_p = 0
-        else
-            c_p = c_pmax*sin(theta - pi/2)**2
-        end if
+    ! Write Mesh info to json
+    call json_value_create(p_parent)
+    call to_object(p_parent, 'mesh_info')
+    call json_value_add(report_json, p_parent)
+    call json_value_add(p_parent, 'N_body_panels', N_panels)
+    call json_value_add(p_parent, 'N_body_vertices', N_verts)
+    nullify(p_parent)
 
-        panels(i)%cp = c_p
-    end do
+    ! Write solver results
+    call json_value_create(p_parent)
+    call to_object(p_parent, 'total_forces')
+    call json_value_add(report_json, p_parent)
+    call json_value_add(p_parent, 'C_x', C_f(1))
+    call json_value_add(p_parent, 'C_y', C_f(2))
+    call json_value_add(p_parent, 'C_z', C_f(3))
+    nullify(p_parent)
 
-    ! Loop through panels and calculate discrete force coefficients
-    C_f = [0,0,0]
-    do i = 1, N_panels
+    ! Find Time
+    call system_clock(end_count)
+    runtime = real(end_count - start_count)/count_rate
 
-        panels(i)%dC_f = panels(i)%cp * panels(i)%normal * panels(i)%area/ panels(i)%norm_mag
-        C_f = C_f + panels(i)%dC_f
+    ! Write timing to json
+    call json_value_create(p_parent)
+    call to_object(p_parent, 'timing')
+    call json_value_add(report_json,p_parent)
+    call json_value_add(p_parent, 'runtime', runtime)
+    nullify(p_parent)
 
-    end do
-
-    ! Make C_f non-dimensional
-    C_f = C_f / ref_area
-    write(*,*) "Force Coefficients", C_f
-
+    ! Write input to json
+    call json_value_create(p_parent)
+    call to_object(p_parent, 'input')
+    call json_value_add(report_json, p_parent)
+    call json_value_add(p_parent, flow_settings)
+    nullify(p_parent)
 
     ! Write out new vtk
-    result_file = "results/random_sphere_ultra_fine_MN_mach10.vtk"
+    call vtk_out_write(body_file, N_verts, N_panels, vertices, panels)
 
-    open(newunit=unit, file=result_file)
+    ! Write report
+    call json_xtnsn_get(output_settings, 'report_file', report_file, 'none')
+    if (report_file /= 'none') then
+        open(newunit=i_unit, file=report_file, status='REPLACE')
+        call json_print(report_json, i_unit)
+        close(i_unit)
+        write(*,'(a20 a)') "    Report: ", report_file
+        write(*,*)
+    end if
 
-    ! File header
-    write(unit,'(a)') "# vtk DataFile Version 3.0"
-    write(unit,'(a)') "NewPan results file."
-    write(unit,'(a)') "ASCII"
+    ! Goodbye
+    write(*,'(a, f10.4, a)') " New Pan Execution Time", runtime, " s"
 
-    ! Vertex header
-    write(unit,'(a)') "DATASET POLYDATA"
-    write(unit, '(a i20 a)') "POINTS", N_verts, " float"
-
-    ! Write out vertices
-    do i=1,N_verts
-        write(unit, '(e20.12, e20.12, e20.12)') vertices(i)%location(1), vertices(i)%location(2), vertices(i)%location(3)
-    end do
-
-    ! Panel Header
-    write(unit, '(a i20 i20)') "POLYGONS", N_panels, N_panels*4
-
-    ! Write out Panels
-    do i=1,N_panels
-        write(unit, '(i20)', advance='no') 3
-
-        do j=1,panels(i)%N
-            write(unit, '(i20)', advance='no') panels(i)%vert_ind(j) -1
-        end do
-        
-        write(unit,*)
-    end do
-
-    ! Cell Data header
-    write(unit, '(a i20)') "CELL_DATA", N_panels
-
-    ! Write out cell normals
-    write(unit, '(a)') "NORMALS normals float"
-    do i=1,N_panels
-
-        write(unit, '(e20.12, e20.12, e20.12)') panels(i)%normal(1), panels(i)%normal(2), panels(i)%normal(3)
-
-    end do
-
-    ! Write C_p
-    write(unit, '(a, a, a)') "SCALARS ", "C_p", " float 1"
-    write(unit, '(a)') "LOOKUP_TABLE default"
-    do i = 1, N_panels
-        write(unit, '(e20.12)') panels(i)%cp
-    end do
-
-    ! Write dC_f
-    write(unit, '(a, a, a)') "VECTORS ", "dC_f", " float"
-    do i = 1, N_panels
-        write(unit, '(e20.12, e20.12, e20.12)') panels(i)%dC_f(1), panels(i)%dC_f(2), panels(i)%dC_f(3)
-    end do
-    
-
-    close(unit)
-
-
-
-
-
-contains
-
-    ! Calculates the normal vector of a panel
-    subroutine calc_norm(pan)
-        implicit none
-        type(panel), intent(inout) :: pan
-        real, dimension(3) :: v1, v2, cross
-        !write(*,*) pan%vert_ind
-        !write(*,*) "1.", vertices(pan%vert_ind(1))%location
-        ! Calculate panel vectors
-        v1 = vertices(pan%vert_ind(3))%location - vertices(pan%vert_ind(1))%location
-        v2 = vertices(pan%vert_ind(2))%location - vertices(pan%vert_ind(3))%location
-        !write(*,*) "Vector 1", v1
-        !write(*,*) "Vector 2", v2
-        
-
-        ! Calculate Cross Product
-        cross(1) = v1(2) * v2(3) - v1(3) * v2(2)
-        cross(2) = v1(3) * v2(1) - v1(1) * v2(3)
-        cross(3) = v1(1) * v2(2) - v1(2) * v2(1)
-
-        pan%normal = cross
-
-        
-
-    end subroutine calc_norm
+    write(*,*)
 
 end program main
-
-
-

@@ -1,0 +1,43 @@
+{
+    "info" : {
+        "generated_by" : "NewPan (c) 2023 USU Aerolab",
+        "executed" : "Fri May 26 14:31:12 2023"
+    },
+    "mesh_info" : {
+        "N_body_panels" : 3996,
+        "N_body_vertices" : 2000
+    },
+    "total_forces" : {
+        "C_x" : 8.83998811244965E-001,
+        "C_y" : 2.11366961593740E-004,
+        "C_z" : 1.49738203617744E-004
+    },
+    "timing" : {
+        "runtime" : 3.09999994933605E-002
+    },
+    "input" : {
+        "flow" : {
+            "freestream_direction" : [
+                    -1.00000000000000E+000,
+                    0.00000000000000E+000,
+                    0.00000000000000E+000
+                ],
+            "mach_number" : 3.35025382041931E+000,
+            "gamma" : 1.39999997615814E+000
+        },
+        "geometry" : {
+            "file" : "meshes/random_sphere_ultra_fine_sample_8.vtk",
+            "reference" : {
+                "area" : 3.14159274101257E+000
+            }
+        },
+        "solver" : {
+            "windward_method" : "modified-newtonian",
+            "leeward_method" : "none"
+        },
+        "output" : {
+            "body_file" : "studies/inviscid_hypersonic_sphere/results/M_3.35_ultra_fine_mod-newton.vtk",
+            "report_file" : "studies/inviscid_hypersonic_sphere/reports/M_3.35_ultra_fine_mod-newton.json"
+        }
+    }
+}
