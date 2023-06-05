@@ -30,6 +30,9 @@ def run_study(M, grid, method):
     elif method == "mod-newton-pm":
         windward_method = "modified-newtonian"
         leeward_method = "prandtl-meyer"
+    elif method == "kaufman":
+        windward_method = "kaufman"
+        leeward_method = "none"
 
     # Write out input file
 
@@ -82,16 +85,16 @@ def run_study(M, grid, method):
 
 if __name__ == "__main__":
     # Retrieve experimental data
-    exp_data = np.genfromtxt(study_dir + "/data/mach_4-10.csv", delimiter=',')
+    exp_data = np.genfromtxt(study_dir + "/data/exp_data_3.csv", delimiter=',')
     M_exp = exp_data[:,0]
     CD_exp = exp_data[:,1]
 
 
     # Parameters
     grids = ['coarse', 'medium', 'fine']
-    methods = ['mod-newton', 'mod-newton-pm']
+    methods = ['mod-newton', 'mod-newton-pm', 'kaufman']
     Ms = list(M_exp[1:])
-    CD = np.zeros((len(grids), len(Ms), 2))
+    CD = np.zeros((len(grids), len(Ms), 3))
 
     # Loop
     for i, grid in enumerate(grids):
@@ -107,16 +110,17 @@ if __name__ == "__main__":
         if i == 1:
             plt.plot(Ms, CD[i,:,0], 'kH', mfc='none', markersize=10-3*i, label="Newton")
             plt.plot(Ms, CD[i,:,1], 'ko', mfc='none', markersize=10-3*i, label="Newton-Prandtl")
+            plt.plot(Ms, CD[i,:,2], 'k^', mfc='none', markersize=10-3*i, label="Kaufman")
         else:
             plt.plot(Ms, CD[i,:,0], 'kH', mfc='none', markersize=10-3*i)
             plt.plot(Ms, CD[i,:,1], 'ko', mfc='none', markersize=10-3*i)
+            plt.plot(Ms, CD[i,:,2], 'k^', mfc='none', markersize=10-3*i)
 
     plt.plot(M_exp, CD_exp, 'k-', label='Bailey et al. (1971)', markersize=3)
     plt.xlabel('$M_\infty$')
     plt.ylabel('$C_d$')
     plt.legend()
-    plt.savefig(plot_dir+"c_d_over_M_3.5-10.pdf")
-    plt.savefig(plot_dir+"c_d_over_M_3.5-10.svg")
-    plt.savefig(plot_dir+"c_d_over_M_3.5-10.png")
+    plt.savefig(plot_dir+"c_d_over_M.pdf")
+    plt.savefig(plot_dir+"c_d_over_M.svg")
     plt.close()
 

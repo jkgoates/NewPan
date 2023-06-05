@@ -1,6 +1,7 @@
 module panel_solver_mod
     use panel_mod
     use base_geom_mod
+    use flow_mod
 
     contains
 
@@ -38,7 +39,7 @@ module panel_solver_mod
         real, intent(out) :: c_pmax
 
 
-        if (windward_method == 'modified-newtonian') then
+        if (windward_method == 'modified-newtonian' .or. windward_method == 'kaufman') then
             write(*,*) "Solving for pressure coefficients using Modified Newtonian Method..."
             c_pmax = (2/(gamma*m**2))*( (( (((gamma + 1)**2) * m**2 )/((4*gamma*m**2)-2*(gamma-1)))**(gamma/(gamma-1))) * &
                 ((1-gamma+(2*gamma*m**2))/(gamma+1)) -1)
@@ -135,5 +136,42 @@ module panel_solver_mod
         end if
 
     end subroutine panel_solver_calc_seperation
+
+    subroutine panel_solver_calc_pressures_kaufman(m,gamma,N_panels,c_pmax,panels)
+
+        implicit none
+        
+        real, intent(in) :: gamma, m, c_pmax
+        integer, intent(in) :: N_panels
+        type(panel), dimension(:), allocatable, intent(inout) :: panels
+
+        type(flow) :: flows
+        integer :: i
+        real :: m_i
+
+        flows%m = m
+        flows%gamma = gamma
+
+        call flows%init_kaufman()
+
+        do i = 1, N_panels
+            if (panels(i)%theta > flows%delta_q) then
+                panels(i)%c_p = c_pmax * sin(panels(i)%theta)**2
+                panels(i)%m_surf = m * cos(panels(i)%theta)
+            else if (panels(i)%theta > flows%theta_min) then
+                m_i = flows%solve_prandtl_meyer_mach(panels(i)%theta)
+                panels(i)%c_p = 2 / (gamma * m**2) * ((1/flows%P_free_to_stag * &
+                            ((2 / (2 + (gamma - 1) * m_i**2))**(gamma / (gamma - 1)))) - 1)
+                panels(i)%m_surf = m_i
+            else
+                panels(i)%c_p = 0
+                panels(i)%seperated = .true.
+                panels(i)%m_surf = 0
+            end if
+        end do
+
+
+
+    end subroutine panel_solver_calc_pressures_kaufman
 
 end module panel_solver_mod

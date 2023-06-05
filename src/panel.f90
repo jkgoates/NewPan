@@ -7,7 +7,7 @@ module panel_mod
     
     type panel
 
-        real, dimension(3) :: normal, dC_f
+        real, dimension(3) :: normal, dC_f, centr
         integer, dimension(3) :: vert_ind
         real :: c_p, norm_mag, area, m_surf, theta, phi
         integer :: N=3
@@ -17,6 +17,7 @@ module panel_mod
         contains
 
         procedure :: calc_norm => panel_calc_norm
+        procedure :: calc_centroid => panel_calc_centroid
         procedure :: calc_pressure => panel_calc_pressure
         procedure :: get_vertex_loc => panel_get_vertex_loc
 
@@ -51,6 +52,26 @@ contains
         
 
     end subroutine panel_calc_norm
+
+    subroutine panel_calc_centroid(this, vertices)
+    
+        implicit none
+        
+        class(panel), intent(inout) :: this
+        type(vertex), dimension(:), allocatable, intent(in) :: vertices
+        real, dimension(3) :: sum
+        integer :: i
+
+        ! Get average of corner points
+        sum = 0.
+        do i=1,this%N
+            sum = sum + vertices(this%vert_ind(i))%location
+        end do
+
+        ! Set centroid
+        this%centr = sum/this%N
+
+    end subroutine panel_calc_centroid
 
     subroutine panel_calc_pressure(this, leeward_method, gamma, pi, m, c_pmax)
         ! Calculates the pressure on a panel

@@ -1,0 +1,43 @@
+{
+    "info" : {
+        "generated_by" : "NewPan (c) 2023 USU Aerolab",
+        "executed" : "Fri Jun  2 16:20:04 2023"
+    },
+    "mesh_info" : {
+        "N_body_panels" : 3996,
+        "N_body_vertices" : 2000
+    },
+    "total_forces" : {
+        "C_x" : 9.26960408687592E-001,
+        "C_y" : 3.04259068798274E-004,
+        "C_z" : 4.41058436990716E-005
+    },
+    "timing" : {
+        "runtime" : 3.20000015199184E-002
+    },
+    "input" : {
+        "flow" : {
+            "freestream_direction" : [
+                    -1.00000000000000E+000,
+                    0.00000000000000E+000,
+                    0.00000000000000E+000
+                ],
+            "mach_number" : 1.21827411651611E+001,
+            "gamma" : 1.39999997615814E+000
+        },
+        "geometry" : {
+            "file" : "meshes/random_sphere_ultra_fine_sample_8.vtk",
+            "reference" : {
+                "area" : 3.14159274101257E+000
+            }
+        },
+        "solver" : {
+            "windward_method" : "kaufman",
+            "leeward_method" : "none"
+        },
+        "output" : {
+            "body_file" : "studies/inviscid_hypersonic_sphere/results/M_12.183_coarse_kaufman.vtk",
+            "report_file" : "studies/inviscid_hypersonic_sphere/reports/M_12.183_coarse_kaufman.json"
+        }
+    }
+}

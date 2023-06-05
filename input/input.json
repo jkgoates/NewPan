@@ -1,21 +1,21 @@
 {
     "flow": {
         "freestream_direction": [-1.0,0.0,0.0],
-        "mach_number" : 3,
+        "mach_number" : 5,
         "gamma" : 1.4
     },
     "geometry" : {
-        "file": "meshes/random_sphere_ultra_fine_sample_8.vtk",
+        "file": "meshes/tangent_ogive_medium.vtk",
         "reference": {
-            "area": 3.14159268
+            "area": 0.785398
         }
     },
     "solver": {
-        "windward_method" : "modified-newtonian",
+        "windward_method" : "kaufman",
         "leeward_method" : "prandtl-meyer"
     },
     "output": {
-        "body_file": "results/random_sphere_ultra_fine_MN_mach-3.vtk",
-        "report_file": "results/random_sphere_ultra_fine_MN_mach-3.json"
+        "body_file": "results/tangent_ogive_medium_K_mach-5.vtk",
+        "report_file": "results/tangent_ogive_medium_K_mach-5.json"
     }
 }

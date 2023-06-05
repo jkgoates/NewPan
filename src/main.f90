@@ -119,9 +119,16 @@ program main
     ! Calculate Prandtl meyer seperation
     call panel_solver_calc_seperation(leeward_method, N_panels, panels, m, gamma)
 
-    ! Calculate pressures
-    call panel_solver_calc_pressures(freestream, gamma, leeward_method, N_panels, panels, m, pi, c_pmax)
+    if (windward_method == 'kaufman') then
+
+        call panel_solver_calc_pressures_kaufman(m, gamma, N_panels, c_pmax, panels)
     
+    else
+
+        ! Calculate pressures
+        call panel_solver_calc_pressures(freestream, gamma, leeward_method, N_panels, panels, m, pi, c_pmax)
+    end if
+
     ! Calculate force coefficients
     call panel_solver_calc_forces(C_f, N_panels, panels, ref_area)
     write(*,'(a20)') "Force Coefficients:"
@@ -182,5 +189,6 @@ program main
     write(*,'(a, f10.4, a)') " New Pan Execution Time", runtime, " s"
 
     write(*,*)
+
 
 end program main

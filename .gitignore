@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# Study files
+*.pdf
+studies/*/data/*
+studies/*/plots/*
+studies/*/plots/*
+studies/*/results/*
+
+# Python stuff
+__pycache__/

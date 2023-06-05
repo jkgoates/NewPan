@@ -1,7 +1,7 @@
 {
     "info" : {
         "generated_by" : "NewPan (c) 2023 USU Aerolab",
-        "executed" : "Fri May 26 14:31:03 2023"
+        "executed" : "Fri Jun  2 16:20:01 2023"
     },
     "mesh_info" : {
         "N_body_panels" : 3996,
@@ -9,8 +9,8 @@
     },
     "total_forces" : {
         "C_x" : 8.97663652896881E-001,
-        "C_y" : 2.14607309317216E-004,
-        "C_z" : 1.51963817188516E-004
+        "C_y" : 2.14606261579320E-004,
+        "C_z" : 1.51954474858940E-004
     },
     "timing" : {
         "runtime" : 3.09999994933605E-002

@@ -31,6 +31,9 @@ module vtk_mod
         case (3)
             call load_surface_vtk_ver_3(mesh_file, N_verts, N_panels, vertices, panels)
 
+        case (5)
+            call load_surface_vtk_ver_5(mesh_file, N_verts, N_panels, vertices, panels)
+
         case default
             write(*,*) "!!! VTK file version ", ver, " not recognized. Quitting..."
             stop
@@ -111,6 +114,9 @@ module vtk_mod
 
             ! Calculate Panel Area
             panels(i)%area = panels(i)%norm_mag/2
+            
+            ! Calculate Centroid
+            call panels(i)%calc_centroid(vertices)
 
         end do
 
@@ -119,6 +125,186 @@ module vtk_mod
 
 
     end subroutine load_surface_vtk_ver_3
+
+    subroutine load_surface_vtk_ver_5(mesh_file, N_verts, N_panels, vertices, panels)
+        ! Loads a surface mesh from a vtk file. Only a body.
+
+        implicit none
+
+        character(len=:),allocatable,intent(in) :: mesh_file
+        integer,intent(out) :: N_verts, N_panels
+        type(vertex),dimension(:),allocatable,intent(out) :: vertices
+        type(panel),dimension(:),allocatable,intent(out) :: panels
+
+        character(len=200) :: dummy_read, line
+        real,dimension(:,:),allocatable :: vertex_locs
+        integer :: i, j, N, i1, i2, i3, N_duplicates, unit, ind, N_words
+        integer,dimension(:),allocatable :: vertex_inds
+
+        ! Open file
+        open(newunit=unit, file=mesh_file)
+
+            ! Determine number of vertices
+            read(unit,*) ! Header
+            read(unit,*) ! Header
+            read(unit,*) ! Header
+            read(unit,*) ! Header
+            read(unit,*) dummy_read, N_verts, dummy_read
+
+            ! Store vertices
+            allocate(vertex_locs(3,N_verts))
+            allocate(vertices(N_verts))
+            
+            ! Read in three from each line
+            do i=1,N_verts/3
+                read(unit,*) vertex_locs(1,3*(i-1)+1), vertex_locs(2,3*(i-1)+1), vertex_locs(3,3*(i-1)+1), &
+                             vertex_locs(1,3*(i-1)+2), vertex_locs(2,3*(i-1)+2), vertex_locs(3,3*(i-1)+2), &
+                             vertex_locs(1,3*(i-1)+3), vertex_locs(2,3*(i-1)+3), vertex_locs(3,3*(i-1)+3)
+            end do
+
+            ! Get last line
+            if (mod(N_verts, 3) == 1) then
+                read(unit,*) vertex_locs(1,N_verts), vertex_locs(2,N_verts), vertex_locs(3,N_verts)
+            else if (mod(N_verts, 3) == 2) then
+                read(unit,*) vertex_locs(1,N_verts-1), vertex_locs(2,N_verts-1), vertex_locs(3,N_verts-1), &
+                             vertex_locs(1,N_verts), vertex_locs(2,N_verts), vertex_locs(3,N_verts)
+            end if
+            
+            ! Store array of vertices
+            do i = 1, N_verts
+                do j = 1,3
+                    ! Store Locations
+                    vertices(i)%location(j) = vertex_locs(j,i)
+                end do
+
+                ! Store index
+                vertices(i)%ind = i
+            end do
+            
+            ! Get to start of polygons
+            read(unit,'(a)') line
+            do while (index(line, 'POLYGONS') == 0 .and. index(line, 'CELLS') == 0)
+                read(unit,'(a)') line
+            end do
+
+            ! Determine number of panels
+            read(line,*) dummy_read, N_panels, dummy_read
+            N_panels = N_panels - 1
+
+            ! Allocate panel array
+            allocate(panels(N_panels))
+
+            ! Get to start of mapping
+            read(unit,'(a)') line
+            do while (index(line, 'CONNECTIVITY') == 0)
+                read(unit,'(a)') line
+            end do
+
+            ! Read in three panels at a time
+            ind = 0
+            do while (.true.)
+
+                ! Update index
+                ind = ind + 1
+
+                ! Check we've not gone over
+                if (ind > N_panels) exit
+
+                ! Read in line
+                read(unit,'(a)') line
+
+                ! Get number of points on the line
+                N_words = get_N_words_in_string(line)
+
+                ! Allocate vertex indices
+                if (allocated(vertex_inds)) deallocate(vertex_inds)
+                allocate(vertex_inds(N_words))
+                read(line,*) vertex_inds
+
+                ! Initialize first panel; need +1 because VTK uses 0-based indexing
+                panels(ind)%vert_ind = [vertex_inds(1)+1, vertex_inds(2)+1, vertex_inds(3)+1]
+                
+                ! Calculate Normal
+                call panels(ind)%calc_norm(vertices)
+
+                ! Calculate Panel Area
+                panels(ind)%area = panels(ind)%norm_mag/2
+
+                ! Calculate Centroid
+                call panels(ind)%calc_centroid(vertices)
+
+                ! Move on to second panel
+                if (N_words > 3) then
+                    ind = ind + 1
+
+                    ! Initialize second panel
+                    panels(ind)%vert_ind = [vertex_inds(4)+1, vertex_inds(5)+1, vertex_inds(6)+1]
+                    
+                    ! Calculate Normal
+                    call panel_calc_norm(panels(ind), vertices)
+
+                    ! Calculate Panel Area
+                    panels(ind)%area = panels(ind)%norm_mag/2
+                
+                    ! Calculate Centroid
+                    call panels(ind)%calc_centroid(vertices)
+
+                    ! Move on to third panel
+                    if (N_words > 6) then
+                        ind = ind + 1
+
+                        ! Initialize second panel
+                        panels(ind)%vert_ind = [vertex_inds(7)+1, vertex_inds(8)+1, vertex_inds(9)+1]
+                        
+                        ! Calculate Normal
+                        call panel_calc_norm(panels(ind), vertices)
+
+                        ! Calculate Panel Area
+                        panels(ind)%area = panels(ind)%norm_mag/2
+                        
+                        ! Calculate Centroid
+                        call panels(ind)%calc_centroid(vertices)
+                    end if
+                end if
+
+
+            end do
+
+        close(unit)
+    
+    end subroutine load_surface_vtk_ver_5
+
+    function get_N_words_in_string(line) result(N_words)
+        ! Counts the number of words in the line
+
+        implicit none
+        
+        character(len=*),intent(in) :: line
+
+        integer :: N_words
+
+        integer :: i
+        logical :: on_space
+
+        ! Loop through each character
+        on_space = .true.
+        N_words = 0
+        do i=1,len(line)
+
+            ! Check if we're on a space
+            if (line(i:i) == ' ') then
+
+                on_space = .true.
+
+            ! If we're not on a space but we were, then we've moved onto a word
+            else if (on_space) then
+                N_words = N_words + 1
+                on_space = .false.
+            end if
+
+        end do
+        
+    end function get_N_words_in_string
 
     subroutine vtk_out_write(body_file, N_verts, N_panels, vertices, panels)
 
@@ -205,6 +391,12 @@ module vtk_mod
         write(unit, '(a, a, a)') "VECTORS ", "dC_f", " float"
         do i = 1, N_panels
             write(unit, '(e20.12, e20.12, e20.12)') panels(i)%dC_f(1), panels(i)%dC_f(2), panels(i)%dC_f(3)
+        end do
+
+        ! Write centroids
+        write(unit, '(a, a, a)') "VECTORS ", "centroid", " float"
+        do i = 1, N_panels
+            write(unit, '(e20.12, e20.12, e20.12)') panels(i)%centr(1), panels(i)%centr(2), panels(i)%centr(3)
         end do
 
         ! Write inclination angle
