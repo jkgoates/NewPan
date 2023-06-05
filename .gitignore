@@ -35,7 +35,7 @@
 *.pdf
 studies/*/data/*
 studies/*/plots/*
-studies/*/plots/*
+studies/*/reports/*
 studies/*/results/*
 
 # Python stuff
