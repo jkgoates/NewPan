@@ -9,7 +9,7 @@ module panel_mod
 
         real, dimension(3) :: normal, dC_f, centr
         integer, dimension(3) :: vert_ind
-        real :: c_p, norm_mag, area, m_surf, theta, phi
+        real :: c_p=0, norm_mag, area, m_surf, theta, phi
         integer :: N=3
         type(vertex_pointer), dimension(:), allocatable :: vertices
         logical :: seperated=.false.
@@ -18,7 +18,8 @@ module panel_mod
 
         procedure :: calc_norm => panel_calc_norm
         procedure :: calc_centroid => panel_calc_centroid
-        procedure :: calc_pressure => panel_calc_pressure
+        procedure :: calc_pressure_newton => panel_calc_pressure_newton
+        procedure :: calc_pressure_prandtl => panel_calc_pressure_prandtl
         procedure :: get_vertex_loc => panel_get_vertex_loc
 
 
@@ -73,31 +74,30 @@ contains
 
     end subroutine panel_calc_centroid
 
-    subroutine panel_calc_pressure(this, leeward_method, gamma, pi, m, c_pmax)
+    subroutine panel_calc_pressure_newton(this, m, c_pmax)
         ! Calculates the pressure on a panel
-        real, intent(in) :: gamma, pi, m, c_pmax
-        character(len=:), allocatable, intent(in) :: leeward_method
+        real, intent(in) :: m, c_pmax
         class(panel), intent(inout) :: this
 
-        
-        ! Check if panel faces freestream
-        if ( (this%theta > pi) .or. (this%theta < 0)) then
-            if (leeward_method == 'prandtl-meyer') then
-                ! Prandtl-meyer expansion on shadow region
-                if (.not. this%seperated) then 
-                    this%c_p = - ((gamma + 1)/2 * this%theta**2 * (sqrt(1 + ( 4 / ((gamma + 1) * m * this%theta))**2) - 1))
-                end if
-            else
-                ! Newtonian method on shadow region
-                this%c_p = 0
-            end if
-        else
-            ! Newtonian Method on impact region
-            this%c_p = c_pmax*sin(this%theta)**2
-            this%m_surf = m * cos(this%theta)
-        end if
+               ! Prandtl-meyer expansion on shadow region
+                !if (.not. this%seperated) then 
+                    !this%c_p = - ((gamma + 1)/2 * this%theta**2 * (sqrt(1 + ( 4 / ((gamma + 1) * m * this%theta))**2) - 1))
+           
+        ! Newtonian Method on impact region
+        this%c_p = c_pmax*sin(this%theta)**2
+        this%m_surf = m * cos(this%theta)
     
-    end subroutine panel_calc_pressure
+    end subroutine panel_calc_pressure_newton
+
+    subroutine panel_calc_pressure_prandtl(this, gamma, m)
+        
+        class(panel), intent(inout) :: this
+        real, intent(in) :: gamma, m
+
+        ! Ensure that 
+        this%c_p = - ((gamma + 1)/2 * this%theta**2 * (sqrt(1 + ( 4 / ((gamma + 1) * m * this%theta))**2) - 1))
+
+    end subroutine panel_calc_pressure_prandtl
 
     function panel_get_vertex_loc(this, i) result(loc)
 
@@ -109,22 +109,6 @@ contains
         loc = this%vertices(i)%ptr%location
 
     end function panel_get_vertex_loc
-
-    subroutine panel_prandtl_meyer_seperation(this, omega)
-
-        implicit none
-        class(panel), intent(inout) :: this
-        real, intent(in) :: omega
-
-        if (this%theta <= -omega) then
-            this%seperated = .true.
-        else
-            this%seperated = .false.
-
-        end if
-
-
-    end subroutine panel_prandtl_meyer_seperation
 
 
 end module panel_mod

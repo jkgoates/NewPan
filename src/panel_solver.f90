@@ -2,176 +2,285 @@ module panel_solver_mod
     use panel_mod
     use base_geom_mod
     use flow_mod
+    use surface_mesh_mod
+    use math_mod
 
-    contains
+    implicit none
+    
+    type panel_solver
+
+        type(flow) :: freestream
+        character(len=:), allocatable :: windward_method, leeward_method
+        real :: c_pmax
 
 
-    subroutine panel_solver_calc_forces(C_f, N_panels, panels, ref_area)
+        contains
+
+            ! Initialization
+            procedure :: init => panel_solver_init
+            procedure :: parse_solver_settings => panel_solver_parse_solver_settings
+
+            ! Pressure calculations
+            procedure :: newton_max_pressure => panel_solver_newton_max_pressure
+            procedure :: calc_pressures_kaufman => panel_solver_calc_pressures_kaufman
+            procedure :: calc_pressures_str_newton => panel_solver_calc_pressures_str_newton
+            procedure :: calc_pressures_mod_newton => panel_solver_calc_pressures_mod_newton
+            procedure :: calc_pressures_free_prandtl => panel_solver_calc_pressures_free_prandtl
+
+            ! Panel calculations
+            procedure :: calc_angles => panel_solver_calc_angles
+            procedure :: calc_forces => panel_solver_calc_forces
+
+            ! Solve
+            procedure :: solve => panel_solver_solve
+
+    end type panel_solver
+
+contains
+
+    subroutine panel_solver_init(this, solver_settings, body_mesh, freestream_flow)
+
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(json_value), pointer,intent(in) :: solver_settings
+        type(surface_mesh), intent(inout) :: body_mesh
+        type(flow), intent(inout) :: freestream_flow
+        
+        ! Store
+        this%freestream = freestream_flow
+
+        ! Get solver settings
+        call this%parse_solver_settings(solver_settings)
+
+        ! Calculate max pressure coefficent
+        call this%newton_max_pressure()
+
+        ! Calculate panel angles
+        call this%calc_angles(body_mesh)
+
+        ! Initialize matching point calculations
+        if (this%windward_method == 'kaufman') then
+            call this%freestream%init_kaufman()
+        end if
+
+    end subroutine panel_solver_init
+
+    subroutine panel_solver_parse_solver_settings(this, solver_settings)
+
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(json_value), pointer, intent(in) :: solver_settings
+
+        ! Get solver methods
+        call json_xtnsn_get(solver_settings, 'windward_method', this%windward_method, 'modified-newtonian')
+        call json_xtnsn_get(solver_settings, 'leeward_method', this%leeward_method, 'none')
+        
+    end subroutine panel_solver_parse_solver_settings
+
+    subroutine panel_solver_solve(this, body_mesh)
+
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
+
+        ! Calculate impact pressures
+        select case (this%windward_method)
+        case ('kaufman')
+            call this%calc_pressures_kaufman(body_mesh)
+        case ('straight-newtonian')
+            call this%calc_pressures_str_newton(body_mesh)
+        case ('modified-newtonian')
+            call this%calc_pressures_mod_newton(body_mesh)
+        case default
+            write(*,*) "!!! Invalid windward method selected. Quitting..."
+            stop
+        end select
+
+        ! Calculate shadow pressures
+        select case (this%leeward_method)
+        case ('none')
+            continue
+        case ('kaufman')
+            continue
+        case ('prandtl-meyer')
+            if (this%windward_method /= 'kaufman') then
+                call this%calc_pressures_free_prandtl(body_mesh)
+            end if
+        case default
+            write(*,*) "!!! Invalid leeward method selected. Quitting..."
+            stop
+        end select
+
+
+    end subroutine panel_solver_solve
+
+    subroutine panel_solver_calc_forces(this, body_mesh)
         ! Calculates the force coefficients on the model
         implicit none
 
-        real, dimension(3), intent(inout) :: C_f
-        integer, intent(in) :: N_panels
-        type(panel), dimension(:), allocatable, intent(inout) :: panels
-        real, intent(in) :: ref_area
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
 
         integer :: i
         
         ! Loop through panels and sum up discrete force coefficients
-        do i = 1, N_panels
+        do i = 1, body_mesh%N_panels
     
-            panels(i)%dC_f = panels(i)%c_p * panels(i)%normal * panels(i)%area
-            C_f = C_f + panels(i)%dC_f
+            body_mesh%panels(i)%dC_f = body_mesh%panels(i)%c_p * body_mesh%panels(i)%normal * body_mesh%panels(i)%area
+            body_mesh%C_f = body_mesh%C_f + body_mesh%panels(i)%dC_f
     
         end do
     
         ! Make C_f non-dimensional
-        C_f = C_f / ref_area
+        body_mesh%C_f = body_mesh%C_f / body_mesh%S_ref
 
     end subroutine panel_solver_calc_forces
 
-    subroutine panel_solver_max_pressure(windward_method, gamma, m, c_pmax)
+    subroutine panel_solver_newton_max_pressure(this)
         ! Calculate max pressure coefficent for use in newtonian based methods
         implicit none
 
-        character(len=:), allocatable, intent(in) :: windward_method
-        real, intent(in) :: gamma, m
-        real, intent(out) :: c_pmax
+        class(panel_solver), intent(inout) :: this
 
+        real :: gamma, M_inf
+        gamma = this%freestream%gamma
+        M_inf = this%freestream%M_inf
 
-        if (windward_method == 'modified-newtonian' .or. windward_method == 'kaufman') then
-            write(*,*) "Solving for pressure coefficients using Modified Newtonian Method..."
-            c_pmax = (2/(gamma*m**2))*( (( (((gamma + 1)**2) * m**2 )/((4*gamma*m**2)-2*(gamma-1)))**(gamma/(gamma-1))) * &
-                ((1-gamma+(2*gamma*m**2))/(gamma+1)) -1)
-        else if (windward_method == 'straight-newtonian') then
-            c_pmax = 2
+        if (this%windward_method == 'modified-newtonian' .or. this%windward_method == 'kaufman') then
+            this%c_pmax = (2/(gamma*M_inf**2))*( (( (((gamma + 1)**2) * M_inf**2 )/ &
+                ((4*gamma*M_inf**2)-2*(gamma-1)))**(gamma/(gamma-1))) * &
+                ((1-gamma+(2*gamma*M_inf**2))/(gamma+1)) -1)
+        else if (this%windward_method == 'straight-newtonian') then
+            this%c_pmax = 2
         else
             write(*,*) "!!! Invalid solver method. Quitting..."
             stop
         end if
 
-    end subroutine panel_solver_max_pressure
+    end subroutine panel_solver_newton_max_pressure
 
-    subroutine panel_solver_calc_angles(panels, freestream, pi, N_panels)
+    subroutine panel_solver_calc_angles(this, body)
         implicit none
 
-        real, dimension(:), allocatable, intent(in) :: freestream
-        real, intent(in) :: pi
-        type(panel), dimension(:), allocatable, intent(inout) :: panels
-        integer, intent(in) :: N_panels
-
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body
         real, dimension(3) :: norm
         integer :: i
 
-        do i = 1, N_panels
+        do i = 1, body%N_panels
 
-            norm = panels(i)%normal
+            norm = body%panels(i)%normal
 
             ! Calculate inclination of the panel normal with respect to the freestream
-            panels(i)%phi = acos(dot_product(freestream,norm))
+            body%panels(i)%phi = acos(dot_product(this%freestream%v_inf,norm))
 
             ! Calculate panel inclination
-            panels(i)%theta = panels(i)%phi -pi/2
+            body%panels(i)%theta = body%panels(i)%phi -pi/2
         end do
 
     end subroutine panel_solver_calc_angles
     
     
-    subroutine panel_solver_calc_pressures(freestream, gamma, leeward_method, N_panels, panels, m, pi, c_pmax)
-        ! Calculates pressure coefficients on each panel
+    subroutine panel_solver_calc_pressures_str_newton(this, body_mesh)
+
         implicit none
         
-        real, dimension(:), allocatable, intent(in) :: freestream
-        real, intent(in) :: gamma, m, pi, c_pmax
-        character(len=:), allocatable, intent(in) :: leeward_method
-        integer, intent(in) :: N_panels
-        type(panel), dimension(:), allocatable, intent(inout) :: panels
-
-        real, dimension(3) :: norm
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
+        
         integer :: i
 
-        ! Loop through and calculate pressure for all panels
-        do i = 1, N_panels
-            
+        ! Loop through panels
+        do i = 1, body_mesh%N_panels
+            ! Check if it faces the freestream
 
-            
-            ! Calculate pressure
-            call panel_calc_pressure(panels(i), leeward_method, gamma, pi, m, c_pmax)
+            if (body_mesh%panels(i)%theta > 0) then
+                call body_mesh%panels(i)%calc_pressure_newton(this%freestream%M_inf, this%c_pmax)
+            end if
+
+        end do
+        
+    end subroutine panel_solver_calc_pressures_str_newton
+
+    subroutine panel_solver_calc_pressures_mod_newton(this, body_mesh)
+
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
+        
+        integer :: i
+
+        ! Loop through panels
+        do i = 1, body_mesh%N_panels
+            ! Check if it faces the freestream
+            if (body_mesh%panels(i)%theta > 0) then
+                call body_mesh%panels(i)%calc_pressure_newton(this%freestream%M_inf, this%c_pmax)
+            end if
 
         end do
 
-    end subroutine panel_solver_calc_pressures
+    end subroutine panel_solver_calc_pressures_mod_newton
 
-    function panel_solver_prandtl_meyer_max_angle(m, gamma) result(omega)
-        ! Identify the maximum turning angle for a prandtl meyer expansion
-        implicit none
-
-        real, intent(in) :: m, gamma
-
-        real :: omega
-
-        omega = sqrt((gamma + 1)/(gamma -1)) * atan(sqrt((gamma - 1)/(gamma + 1) * (m**2 -1))) - atan(sqrt(m**2 -1))
-        write(*,*) omega
-
-    end function panel_solver_prandtl_meyer_max_angle
-
-    subroutine panel_solver_calc_seperation(leeward_method, N_panels, panels, m, gamma)
-        implicit none
-
-        character(len=:), allocatable, intent(in) :: leeward_method
-        real, intent(in) :: gamma, m
-        integer, intent(in) :: N_panels
-        type(panel), dimension(:), allocatable, intent(inout) :: panels
-
-        real :: omega
-        integer :: i
-
-        if (leeward_method == "prandtl-meyer") then
-            omega = panel_solver_prandtl_meyer_max_angle(m, gamma)
-
-            do i = 1, N_panels
-                call panel_prandtl_meyer_seperation(panels(i), omega)
-
-            end do
-        end if
-
-    end subroutine panel_solver_calc_seperation
-
-    subroutine panel_solver_calc_pressures_kaufman(m,gamma,N_panels,c_pmax,panels)
+    subroutine panel_solver_calc_pressures_kaufman(this, body_mesh)
 
         implicit none
+
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
         
-        real, intent(in) :: gamma, m, c_pmax
-        integer, intent(in) :: N_panels
-        type(panel), dimension(:), allocatable, intent(inout) :: panels
-
-        type(flow) :: flows
         integer :: i
-        real :: m_i
+        real :: m_i, m, gamma
 
-        flows%m = m
-        flows%gamma = gamma
+        ! Declutter
+        gamma = this%freestream%gamma
+        m = this%freestream%M_inf
 
-        call flows%init_kaufman()
-
-        do i = 1, N_panels
-            if (panels(i)%theta > flows%delta_q) then
-                panels(i)%c_p = c_pmax * sin(panels(i)%theta)**2
-                panels(i)%m_surf = m * cos(panels(i)%theta)
-            else if (panels(i)%theta > flows%theta_min) then
-                m_i = flows%solve_prandtl_meyer_mach(panels(i)%theta)
-                panels(i)%c_p = 2 / (gamma * m**2) * ((1/flows%P_free_to_stag * &
+        do i = 1, body_mesh%N_panels
+            ! Modified Newtonian for blunt panels
+            if (body_mesh%panels(i)%theta > this%freestream%delta_q) then
+                body_mesh%panels(i)%c_p = this%c_pmax * sin(body_mesh%panels(i)%theta)**2
+                body_mesh%panels(i)%m_surf = m * cos(body_mesh%panels(i)%theta)
+            ! Prandtl meyer expansion from matching point to assumed flow seperation
+            else if (body_mesh%panels(i)%theta > this%freestream%theta_min) then
+                m_i = this%freestream%solve_prandtl_meyer_mach(body_mesh%panels(i)%theta)
+                body_mesh%panels(i)%c_p = 2 / (gamma * m**2) * ((1/this%freestream%P_free_to_stag * &
                             ((2 / (2 + (gamma - 1) * m_i**2))**(gamma / (gamma - 1)))) - 1)
-                panels(i)%m_surf = m_i
+                body_mesh%panels(i)%m_surf = m_i
+            ! Seperated flow
             else
-                panels(i)%c_p = 0
-                panels(i)%seperated = .true.
-                panels(i)%m_surf = 0
+                body_mesh%panels(i)%c_p = 0
+                body_mesh%panels(i)%seperated = .true.
+                body_mesh%panels(i)%m_surf = 0
             end if
         end do
 
-
-
     end subroutine panel_solver_calc_pressures_kaufman
+
+    subroutine panel_solver_calc_pressures_free_prandtl(this, body_mesh)
+
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
+
+        integer :: i
+
+        call this%freestream%get_free_max_turning_angle()
+
+        do i = 1, body_mesh%N_panels
+            ! Check panel faces away from freestream
+            if (body_mesh%panels(i)%theta <= 0 .and. body_mesh%panels(i)%theta >= this%freestream%theta_min) then
+                call body_mesh%panels(i)%calc_pressure_prandtl(this%freestream%gamma, this%freestream%M_inf)
+            else if (body_mesh%panels(i)%theta < this%freestream%theta_min) then
+                body_mesh%panels(i)%c_p = 0
+                body_mesh%panels(i)%seperated = .true.
+            end if
+        end do
+
+    end subroutine panel_solver_calc_pressures_free_prandtl
 
 end module panel_solver_mod

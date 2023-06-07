@@ -1,22 +1,62 @@
 module flow_mod
+
+    use json_mod
+    use json_xtnsn_mod
+    use math_mod
+    
     implicit none
     
     type flow
     
-        real, dimension(3) :: freestream=[-1,0,0]
-        real :: m=20, gamma=1.4, m_q=0.0, q, delta_q, pi=3.14159268, theta_min
+        real, dimension(:), allocatable :: v_inf ! Nondimensional freestream velocity
+        real :: M_inf, gamma, m_q=0.0, q, delta_q, theta_min
         real :: P_free_to_stag, m_sep
 
         contains
         
+        procedure :: init => flow_init
         procedure :: get_prandtl_meyer_matching_angle => flow_get_prandtl_meyer_matching_angle
         procedure :: solve_prandtl_meyer_mach => flow_solve_prandtl_meyer_mach
         procedure :: get_seperation_mach => flow_get_seperation_mach
+        procedure :: get_free_max_turning_angle => flow_get_free_max_turning_angle
         procedure :: init_kaufman => flow_init_kaufman
 
     end type flow
     
 contains
+
+    subroutine flow_init(this, settings)
+
+        implicit none
+        
+        class(flow), intent(inout) :: this
+        type(json_value), pointer, intent(in) :: settings
+
+        logical :: found
+
+        ! Get flow params
+        call json_get(settings, 'freestream_direction', this%v_inf, found)
+        if (.not. found) then
+            write(*,*) "!!! Freestream velocity was not specified. Quitting..."
+            stop
+        end if
+        call json_xtnsn_get(settings, 'mach_number', this%M_inf)
+        call json_xtnsn_get(settings, 'gamma', this%gamma, 1.4)
+
+        ! Normalize freestream vector
+        this%v_inf = this%v_inf/(sqrt(this%v_inf(1)**2 + this%v_inf(2)**2 + this%v_inf(3)**2))
+
+        ! Check for positive Mach number
+        if (this%M_inf < 0.) then
+            write(*,*) "!!! Invalid freestream Mach number selected. Cannot be Negative. Quitting..."
+            stop
+        ! Give low Mach number warning
+        else if (this%M_inf < 3.) then
+            write(*,*) "!!! Low supersonic Mach number selected. NewPan may report an inaccurate solution !!!"
+        end if
+
+
+    end subroutine flow_init
 
     subroutine flow_init_kaufman(this)
 
@@ -24,6 +64,7 @@ contains
         
         class(flow), intent(inout) :: this
 
+        write(*,*) "Solving for the matching point"
         call this%get_prandtl_meyer_matching_angle()
         call this%get_seperation_mach()
 
@@ -41,8 +82,8 @@ contains
         integer :: i, j
 
         ! Calculate freestream to stagnation pressure ratio
-        P_free_to_stag = (2/((this%gamma + 1)*this%m**2))**(this%gamma/(this%gamma - 1)) &
-                        * ((2 * this%gamma * this%m**2 - (this%gamma - 1))/(this%gamma + 1))**(1/(this%gamma - 1))
+        P_free_to_stag = (2/((this%gamma + 1)*this%M_inf**2))**(this%gamma/(this%gamma - 1)) &
+                        * ((2 * this%gamma * this%M_inf**2 - (this%gamma - 1))/(this%gamma + 1))**(1/(this%gamma - 1))
         ! Make an initial guess at mach number
         M_q(1) = M_guess
 
@@ -102,18 +143,19 @@ contains
             write(*,*) "!!! Solution did not converge or reported an invalid matching mach number, quitting..."
             stop
         else
-            write(*,'(a i2 a)') "Solution converged in ", i, " iterations."
-            write(*,*) "Matching Mach Number: ", this%m_q
+            write(*,'(a i2 a)') "       Solution converged in ", i, " iterations."
+            write(*,*) "      Matching Mach Number: ", this%m_q
             this%P_free_to_stag = P_free_to_stag
         end if
         ! Calculate angle of matching point
         this%delta_q = asin(sqrt((this%q - P_free_to_stag)/(1 - P_free_to_stag)))
-        write(*,*) "Matching inclination: ", this%delta_q
+        write(*,*) "      Matching inclination: ", this%delta_q
 
 
     end subroutine flow_get_prandtl_meyer_matching_angle
 
     function flow_solve_prandtl_meyer_mach(this, theta) result(m_2)
+        ! Solves the prandtl meyer equation for M using an interpolation method
         implicit none
 
         class(flow), intent(inout) :: this
@@ -207,15 +249,33 @@ contains
     end function flow_solve_prandtl_meyer_mach
 
     subroutine flow_get_seperation_mach(this)
+        ! Solves for the the seperation mach number for use in the Kaufman approach
         implicit none
 
         class(flow), intent(inout) :: this
 
         this%m_sep = sqrt((2 / (this%P_free_to_stag**((this%gamma-1)/this%gamma)) - 2)/(this%gamma -1))
 
-        write(*,*) "Separation Mach Number: ", this%m_sep
+        write(*,*) "      Separation Mach Number: ", this%m_sep
 
-    end subroutine
+    end subroutine flow_get_seperation_mach
 
-    
+    subroutine flow_get_free_max_turning_angle(this)
+        
+        implicit none
+
+        class(flow), intent(inout) :: this
+
+        real :: nu_1, nu_2
+        
+        nu_2 = pi/2 * (sqrt((this%gamma + 1) / (this%gamma - 1)) - 1)
+
+        nu_1 = sqrt((this%gamma + 1) / (this%gamma - 1)) * atan2(sqrt((this%gamma - 1) / &
+                    (this%gamma + 1) * (this%M_inf**2 -1)),1.) - atan2(sqrt(this%M_inf**2 - 1),1.)
+
+        this%theta_min = -(nu_2 - nu_1)
+
+    end subroutine flow_get_free_max_turning_angle
+        
+
 end module flow_mod

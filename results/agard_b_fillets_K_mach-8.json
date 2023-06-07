@@ -1,0 +1,43 @@
+{
+    "info" : {
+        "generated_by" : "NewPan (c) 2023 USU Aerolab",
+        "executed" : "Mon Jun  5 16:41:23 2023"
+    },
+    "mesh_info" : {
+        "N_body_panels" : 12916,
+        "N_body_vertices" : 6460
+    },
+    "total_forces" : {
+        "C_x" : -3.07725365189526E-008,
+        "C_y" : -4.01210030531729E-007,
+        "C_z" : 1.78224574774504E-002
+    },
+    "timing" : {
+        "runtime" : 6.19999989867210E-002
+    },
+    "input" : {
+        "flow" : {
+            "freestream_direction" : [
+                    0.00000000000000E+000,
+                    0.00000000000000E+000,
+                    -1.00000000000000E+000
+                ],
+            "mach_number" : 8,
+            "gamma" : 1.39999997615814E+000
+        },
+        "geometry" : {
+            "file" : "meshes/agard_b_fine_fillets.vtk",
+            "reference" : {
+                "area" : 6.92819976806641E+000
+            }
+        },
+        "solver" : {
+            "windward_method" : "kaufman",
+            "leeward_method" : "none"
+        },
+        "output" : {
+            "body_file" : "results/agard_b_fillets_K_mach-8.vtk",
+            "report_file" : "results/agard_b_fillets_K_mach-8.json"
+        }
+    }
+}

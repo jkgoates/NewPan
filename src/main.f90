@@ -6,23 +6,24 @@ program main
     use base_geom_mod
     use vtk_mod
     use panel_solver_mod
+    use surface_mesh_mod
     use flow_mod
+    use math_mod
 
     implicit none
 
 
     ! Initialize variables
-    real :: gamma, m, c_pmax, pi=3.1415926, ref_area, count_rate, runtime
+    real :: count_rate, runtime
     real, dimension(3) :: C_f=[0,0,0]
-    real, dimension(:), allocatable :: freestream
-    integer :: i, j, unit, N_panels, N_verts, start_count, end_count, i_unit
+    integer :: unit, start_count, end_count, i_unit
 
     character(len=:), allocatable :: mesh_file, body_file, result_file, &
                                     report_file, windward_method, leeward_method
     character(100) :: input_file
-    type(flow) :: flows
-    type(panel), dimension(:), allocatable :: panels
-    type(vertex), dimension(:), allocatable :: vertices
+    type(flow) :: freestream_flow
+    type(surface_mesh) :: body_mesh
+    type(panel_solver) :: solver
     type(json_file) :: input_json
     type(json_value), pointer :: flow_settings, &
                                  geom_settings, &
@@ -30,7 +31,8 @@ program main
                                  output_settings, &
                                  report_json, p_parent
 
-    logical :: exists, found
+    logical :: exists, found, verbose
+    integer :: solver_stat
 
 
     ! Initialize json
@@ -65,23 +67,28 @@ program main
     call input_json%get('solver', solver_settings, found)
     call input_json%get('output', output_settings, found)
 
-    ! Welcome message
-    write(*,*) ""
-    write(*,*) "      ------------------------------"
-    write(*,*) "     -----/  ___  ------------------------"
-    write(*,*) "    -----/  /   \         " 
-    write(*,*) "   -----|  |      \                  "
-    write(*,*) "  ------|  |   _    \     NewPan (c) 2023 USU Aerolab  "
-    write(*,*) " -------|  |  |_|    )               v1.0"   
-    write(*,*) "  ------|  |        /               "
-    write(*,*) "   -----|  |      /               "
-    write(*,*) "    -----\  \___/        " 
-    write(*,*) "     -----\       ------------------------"
-    write(*,*) "      -----------------------------"
-    write(*,*) ""
-    write(*,*) "Got input file: ", input_file
-    write(*,*) ""
-    write(*,*) ""
+    ! Get verbose toggle
+    call json_xtnsn_get(output_settings, 'verbose', verbose, default_value=.true.)
+
+    if (verbose) then
+        ! Welcome message
+        write(*,*) ""
+        write(*,*) "      ------------------------------"
+        write(*,*) "     -----/  ___  ------------------------"
+        write(*,*) "    -----/  /   \         " 
+        write(*,*) "   -----|  |      \                  "
+        write(*,*) "  ------|  |   _    \     NewPan (c) 2023 USU Aerolab  "
+        write(*,*) " -------|  |  |_|    )               v1.0"   
+        write(*,*) "  ------|  |        /               "
+        write(*,*) "   -----|  |      /               "
+        write(*,*) "    -----\  \___/        " 
+        write(*,*) "     -----\       ------------------------"
+        write(*,*) "      -----------------------------"
+        write(*,*) ""
+        write(*,*) "Got input file: ", input_file
+        write(*,*) ""
+        write(*,*) "Reading and analyzing surface mesh"
+    end if
 
     ! Initialize report JSON
     call json_value_create(report_json)
@@ -94,64 +101,52 @@ program main
     nullify(p_parent)
     
     ! Obtain input settings
-    call json_xtnsn_get(output_settings, 'body_file', body_file, 'none')
-    call json_xtnsn_get(geom_settings, 'file', mesh_file, 'none')
-    call json_xtnsn_get(flow_settings, 'gamma', gamma, 1.)
-    call json_xtnsn_get(flow_settings, 'mach_number', m, 1.)
-    call json_get(flow_settings, 'freestream_direction', freestream, found)
-    call json_xtnsn_get(geom_settings, 'reference.area', ref_area, 1.)
     call json_xtnsn_get(solver_settings, 'windward_method', windward_method, 'modified-newtonian')
     call json_xtnsn_get(solver_settings, 'leeward_method', leeward_method, 'none')
 
     ! Read Surface mesh
-    call load_surface_vtk(mesh_file, N_verts, N_panels, vertices, panels)
+    call body_mesh%init(geom_settings)
 
+    ! Initialize flow
+    call freestream_flow%init(flow_settings)
 
-    ! Normalize freestream vector
-    freestream = freestream/(sqrt(freestream(1)**2 + freestream(2)**2 + freestream(3)**2))
-
-    ! Calculate max pressure coefficient
-    call panel_solver_max_pressure(windward_method, gamma, m, c_pmax)
-
-    ! Calculate panel angles
-    call panel_solver_calc_angles(panels, freestream, pi, N_panels)
-    
-    ! Calculate Prandtl meyer seperation
-    call panel_solver_calc_seperation(leeward_method, N_panels, panels, m, gamma)
-
-    if (windward_method == 'kaufman') then
-
-        call panel_solver_calc_pressures_kaufman(m, gamma, N_panels, c_pmax, panels)
-    
-    else
-
-        ! Calculate pressures
-        call panel_solver_calc_pressures(freestream, gamma, leeward_method, N_panels, panels, m, pi, c_pmax)
+    if (verbose) then
+        write(*,*)
+        write(*,*) "Initializing based on flow properties"
     end if
 
+    ! Get result files
+    call json_xtnsn_get(output_settings, 'body_file', body_file, 'none')
+
+    ! Initialize panel solver
+    call solver%init(solver_settings, body_mesh, freestream_flow)
+
+    ! Solve
+    call solver%solve(body_mesh)
+
     ! Calculate force coefficients
-    call panel_solver_calc_forces(C_f, N_panels, panels, ref_area)
+    call solver%calc_forces(body_mesh)
     write(*,'(a20)') "Force Coefficients:"
-    write(*, '(a20, e14.6)') "  C_x:", C_f(1)
-    write(*, '(a20, e14.6)') "  C_y:", C_f(2)
-    write(*, '(a20, e14.6)') "  C_z:", C_f(3)
+    write(*, '(a20, e14.6)') "  C_x:", body_mesh%C_f(1)
+    write(*, '(a20, e14.6)') "  C_y:", body_mesh%C_f(2)
+    write(*, '(a20, e14.6)') "  C_z:", body_mesh%C_f(3)
     write(*,*)
 
     ! Write Mesh info to json
     call json_value_create(p_parent)
     call to_object(p_parent, 'mesh_info')
     call json_value_add(report_json, p_parent)
-    call json_value_add(p_parent, 'N_body_panels', N_panels)
-    call json_value_add(p_parent, 'N_body_vertices', N_verts)
+    call json_value_add(p_parent, 'N_body_panels', body_mesh%N_panels)
+    call json_value_add(p_parent, 'N_body_vertices', body_mesh%N_verts)
     nullify(p_parent)
 
     ! Write solver results
     call json_value_create(p_parent)
     call to_object(p_parent, 'total_forces')
     call json_value_add(report_json, p_parent)
-    call json_value_add(p_parent, 'C_x', C_f(1))
-    call json_value_add(p_parent, 'C_y', C_f(2))
-    call json_value_add(p_parent, 'C_z', C_f(3))
+    call json_value_add(p_parent, 'C_x', body_mesh%C_f(1))
+    call json_value_add(p_parent, 'C_y', body_mesh%C_f(2))
+    call json_value_add(p_parent, 'C_z', body_mesh%C_f(3))
     nullify(p_parent)
 
     ! Find Time
@@ -173,7 +168,7 @@ program main
     nullify(p_parent)
 
     ! Write out new vtk
-    call vtk_out_write(body_file, N_verts, N_panels, vertices, panels)
+    call vtk_out_write(body_file, body_mesh%N_verts, body_mesh%N_panels, body_mesh%vertices, body_mesh%panels)
 
     ! Write report
     call json_xtnsn_get(output_settings, 'report_file', report_file, 'none')

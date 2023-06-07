@@ -1,0 +1,43 @@
+{
+    "info" : {
+        "generated_by" : "NewPan (c) 2023 USU Aerolab",
+        "executed" : "Mon Jun  5 15:06:56 2023"
+    },
+    "mesh_info" : {
+        "N_body_panels" : 12384,
+        "N_body_vertices" : 6194
+    },
+    "total_forces" : {
+        "C_x" : 2.02545225620270E-002,
+        "C_y" : -3.53641205208532E-008,
+        "C_z" : -1.10795994601176E-008
+    },
+    "timing" : {
+        "runtime" : 6.19999989867210E-002
+    },
+    "input" : {
+        "flow" : {
+            "freestream_direction" : [
+                    -1.00000000000000E+000,
+                    0.00000000000000E+000,
+                    0.00000000000000E+000
+                ],
+            "mach_number" : 200,
+            "gamma" : 1.39999997615814E+000
+        },
+        "geometry" : {
+            "file" : "meshes/biconvex_airfoil.vtk",
+            "reference" : {
+                "area" : 7.85398006439209E-001
+            }
+        },
+        "solver" : {
+            "windward_method" : "straight-newtonian",
+            "leeward_method" : "prandtl-meyer"
+        },
+        "output" : {
+            "body_file" : "results/biconvex_airfoil_SN_mach-200.vtk",
+            "report_file" : "results/biconvex_airfoil_SN_mach-200.json"
+        }
+    }
+}
