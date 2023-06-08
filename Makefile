@@ -14,7 +14,7 @@ COMMON_FILES = json.f95 json_xtnsn.f95 math.f90
 COMMON_PATHS = $(addprefix $(COM_DIR)/, $(COMMON_FILES))
 
 # List source files (ordered based on dependency)
-SRC_FILES = flow.f90 base_geom.f90 panel.f90 mesh.f90 surface_mesh.f90 vtk.f90 panel_solver.f90
+SRC_FILES = flow.f90 base_geom.f90 panel.f90 mesh.f90 vtk.f90 surface_mesh.f90 panel_solver.f90
 SRC_PATHS = $(addprefix $(SRC_DIR)/, $(SRC_FILES))
 
 # Main
