@@ -1,11 +1,11 @@
 {
     "flow": {
-        "freestream_direction": [-1.0,0.0,0.0],
+        "freestream_direction": [0.0,0.25,-1.0],
         "mach_number" : 5,
         "gamma" : 1.4
     },
     "geometry" : {
-        "file": "meshes/shadowed_body.vtk",
+        "file": "meshes/agard_b_fine_fillets.vtk",
         "reference": {
             "area": 3.141592
         }
@@ -15,7 +15,7 @@
         "leeward_method" : "none"
     },
     "output": {
-        "body_file": "results/shadowed_body_test.vtk",
-        "report_file": "results/shadowed_body_test.json"
+        "body_file": "results/agard_b_fine_fillets_test.vtk",
+        "report_file": "results/agard_b_fine_fillets_test.json"
     }
 }

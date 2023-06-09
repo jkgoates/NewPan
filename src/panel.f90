@@ -9,13 +9,13 @@ module panel_mod
 
         real, dimension(3) :: normal, dC_f, centr, centr_pro
         integer, dimension(3) :: vert_ind
-        real :: c_p=0, norm_mag, area, m_surf, theta, phi
+        real :: c_p=0, norm_mag, area, m_surf, theta, phi, shadowed=0
         real :: x_min_pro, x_max_pro, y_min_pro, y_max_pro, z_min_pro, z_max_pro ! Outline of projected panel
         real, dimension(3) :: s12_pro, s23_pro, s31_pro ! Projected side vectors
         integer :: N=3
         type(vertex_pointer), dimension(:), allocatable :: vertices
         real, dimension(:), allocatable :: panel_shadowing
-        logical :: seperated=.false., shadowed=.false.
+        logical :: seperated=.false.
 
         contains
 

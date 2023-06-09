@@ -5,6 +5,7 @@ module base_geom_mod
     type vertex
         integer :: ind
         real, dimension(3) :: location
+        logical :: shadowed = .false.
     end type vertex
 
     type vertex_pointer

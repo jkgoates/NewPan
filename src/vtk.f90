@@ -391,13 +391,7 @@ module vtk_mod
         write(unit, '(a, a, a)') "SCALARS ", "Shadowing", " float 1"
         write(unit, '(a)') "LOOKUP_TABLE default"
         do i = 1, N_panels
-            if (panels(i)%shadowed) then
-                sep = 1.
-                write(unit, '(e20.12)') sep
-            else
-                sep = 0
-                write(unit, '(e20.12)') sep
-            end if
+            write(unit, '(e20.12)') panels(i)%shadowed
         end do
 
         ! Write dC_f

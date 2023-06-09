@@ -30,6 +30,8 @@ module surface_mesh_mod
         procedure :: possible_panel_shadowing => surface_mesh_possible_panel_shadowing
         procedure :: panels_determine_overlap => surface_mesh_panels_determine_overlap
         procedure :: calc_point_overlap => surface_mesh_calc_point_overlap
+        procedure :: shadowed_vertices => surface_mesh_shadowed_vertices
+        procedure :: panel_over_point => surface_mesh_panel_over_point
 
 
 
@@ -115,10 +117,13 @@ contains
         call this%project(freestream)
 
         ! Find possible intersections to simplify calculations
-        call this%possible_panel_shadowing(freestream)
+        !call this%possible_panel_shadowing(freestream)
 
         ! Determine overlap
-        call this%panels_determine_overlap()
+        !call this%panels_determine_overlap()
+
+        ! Find the shadowed vertices
+        call this%shadowed_vertices(freestream)
 
         write(*,*) "Done."
 
@@ -208,10 +213,10 @@ contains
         do i = 1, this%N_panels
 
             ! Allocate shadowing array
-            allocate(this%panels(i)%panel_shadowing(this%N_panels))
-            do j=1,this%N_panels
-                this%panels(i)%panel_shadowing(j) = 0.0
-            end do
+            !allocate(this%panels(i)%panel_shadowing(this%N_panels))
+            !do j=1,this%N_panels
+            !    this%panels(i)%panel_shadowing(j) = 0.0
+            !end do
             
             ! Only panels facing the freestream can have a shadowing effect
             if (this%panels(i)%theta <= 0) cycle
@@ -315,8 +320,7 @@ contains
                 !$OMP critical
                 ! Check if panel is already overlapped
                 if (overlapped) then
-                    this%panels(j)%shadowed = .true.
-                    if (j==5360) write(*,*) i
+                    this%panels(j)%shadowed = 1.0
                 end if
                 !$OMP end critical
 
@@ -414,6 +418,169 @@ contains
 
     end subroutine surface_mesh_calc_point_overlap
 
+    subroutine surface_mesh_shadowed_vertices(this, freestream)
+
+        implicit none
+        
+        class(surface_mesh), intent(inout) :: this
+        type(flow), intent(in) :: freestream
+
+        integer :: i, j, k, l
+        logical :: check_x, check_y, check_z
+        
+        ! Calculate side vectors for all panels
+        !$OMP parallel do schedule(static)
+        do i = 1, this%N_panels
+            this%panels(i)%s12_pro = this%projected_verts(this%panels(i)%vert_ind(2))%location &
+                                    -this%projected_verts(this%panels(i)%vert_ind(1))%location
+
+            this%panels(i)%s23_pro = this%projected_verts(this%panels(i)%vert_ind(3))%location &
+                                    -this%projected_verts(this%panels(i)%vert_ind(2))%location
+
+            this%panels(i)%s31_pro = this%projected_verts(this%panels(i)%vert_ind(1))%location &
+                                    -this%projected_verts(this%panels(i)%vert_ind(3))%location
+
+        end do
+        
+        panel_loop: do i = 1, this%N_panels
+            ! Calculate panel limits
+            call this%panels(i)%calc_projected_outline(this%projected_verts)
+
+            ! Only panels facing the freestream can shadow vertices
+            if (this%panels(i)%theta <= 0) cycle panel_loop
+
+            ! Loop through vertices
+            vertex_loop: do j = 1, this%N_verts
+
+                ! Skip if the vertex is already shadowed
+                if (this%projected_verts(j)%shadowed) cycle vertex_loop
+
+                ! A panel cannot shadow it's own vertices
+                !!! This check needs to be refined
+                if (this%panels(i)%vert_ind(1) == j) cycle vertex_loop
+                if (this%panels(i)%vert_ind(2) == j) cycle vertex_loop
+                if (this%panels(i)%vert_ind(3) == j) cycle vertex_loop
+
+                ! Check if outlines intersect
+                check_x = (this%panels(i)%x_min_pro-0.01 > this%projected_verts(j)%location(1)) .or. &
+                          (this%panels(i)%x_max_pro+0.01 < this%projected_verts(j)%location(1))
+
+                if (check_x) cycle vertex_loop
+
+                check_y = (this%panels(i)%y_min_pro-0.01 > this%projected_verts(j)%location(2)) .or. &
+                          (this%panels(i)%y_max_pro+0.01 < this%projected_verts(j)%location(2))
+
+                if (check_y) cycle vertex_loop
+
+                check_z = (this%panels(i)%z_min_pro-0.01 > this%projected_verts(j)%location(3)) .or. &
+                          (this%panels(i)%z_max_pro+0.01 < this%projected_verts(j)%location(3))
+
+                if (check_z) cycle vertex_loop
+
+                ! Panels can only shadow vertices downstream of themselves
+                !!! This check needs to be refined
+                if (dot_product(this%panels(i)%centr,freestream%v_inf) > &
+                    dot_product(this%vertices(j)%location,freestream%v_inf)) then
+                    cycle vertex_loop
+                end if
+
+                ! If to this point, see if the panel shadows the vertex
+
+                this%projected_verts(j)%shadowed = this%panel_over_point(this%panels(i), this%projected_verts(j))
+
+                if (this%projected_verts(j)%shadowed .and. j == 107) write(*,*) i
+
+            end do vertex_loop
+
+        end do panel_loop
+
+
+        ! Loop through panels and see how many of their vertices are shadowed
+        do i = 1, this%N_panels
+
+            ! Loop through the vertices
+            do j = 1,3
+                if(this%projected_verts(this%panels(i)%vert_ind(j))%shadowed) then
+                    this%panels(i)%shadowed = this%panels(i)%shadowed + 1
+                end if
+
+            end do
+            
+        end do
+
+    end subroutine surface_mesh_shadowed_vertices
+
+    function surface_mesh_panel_over_point(this, pan, vert) result(shadowed)
+        
+        implicit none
+        
+        class(surface_mesh), intent(inout) :: this
+        type(panel), intent(inout) :: pan
+        type(vertex), intent(inout) :: vert
+
+        logical :: shadowed
+        real, dimension(:), allocatable :: side, base_point, b, proj, point, centr, proj_point, err, c
+        real, dimension(:,:), allocatable :: P, side_vec, side_vec_T, b_vec, proj_vec
+        integer :: i, j, k
+        real :: left_right
+        integer :: lefts
+
+
+        ! Get the centroid of the panel
+        centr = pan%centr_pro
+
+        lefts = 0
+        ! Each side of the panel
+        sides: do j = 1, 3
+
+            ! Calculate the projection matrix for the side
+            select case(j)
+            case (1)
+            side = pan%s12_pro
+            case (2)
+            side = pan%s23_pro
+            case (3)
+            side = pan%s31_pro
+            end select
+
+            side_vec = reshape(side, [3,1])
+            side_vec_T = transpose(side_vec)
+
+            P = matmul(side_vec, side_vec_T)/dot_product(side, side)
+
+            base_point = this%projected_verts(pan%vert_ind(j))%location
+
+            point = vert%location
+            b = point - base_point
+            b_vec = reshape(b, [3,1])
+            
+            ! Project point onto side
+            proj_vec = matmul(P,b_vec)
+            proj = reshape(proj_vec, [3])
+            proj_point = proj + base_point
+
+            ! Determine error and centroid vector
+            err = point - proj_point
+            c = centr - proj_point
+
+            ! Do the left right check
+            left_right = dot_product(err,c)
+
+
+            ! Update the lefts array
+            if (left_right >= 0) lefts = lefts + 1
+
+
+        end do sides
+
+        if (lefts == 3) then
+            shadowed = .true.
+        else if (lefts /= 3) then
+            shadowed = .false.
+        end if
+
+        
+    end function surface_mesh_panel_over_point
 
 
 end module surface_mesh_mod
