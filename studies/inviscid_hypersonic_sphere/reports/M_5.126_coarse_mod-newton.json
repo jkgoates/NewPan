@@ -1,19 +1,19 @@
 {
     "info" : {
         "generated_by" : "NewPan (c) 2023 USU Aerolab",
-        "executed" : "Wed Jun  7 09:47:01 2023"
+        "executed" : "Fri Jun  9 10:42:23 2023"
     },
     "mesh_info" : {
         "N_body_panels" : 3996,
         "N_body_vertices" : 2000
     },
     "total_forces" : {
-        "C_x" : 9.03103470802307E-001,
-        "C_y" : 2.15958454646170E-004,
-        "C_z" : 1.52925131260417E-004
+        "C_x" : 9.03103820856018E-001,
+        "C_y" : 2.15935978987559E-004,
+        "C_z" : 1.52989909261879E-004
     },
     "timing" : {
-        "runtime" : 1.49999996647239E-002
+        "runtime" : 1.88000000000000E-001
     },
     "input" : {
         "flow" : {
@@ -22,13 +22,13 @@
                     0.00000000000000E+000,
                     0.00000000000000E+000
                 ],
-            "mach_number" : 5.12613534927368E+000,
-            "gamma" : 1.39999997615814E+000
+            "mach_number" : 5.12613521695257E+000,
+            "gamma" : 1.40000000000000E+000
         },
         "geometry" : {
             "file" : "meshes/random_sphere_ultra_fine_sample_8.vtk",
             "reference" : {
-                "area" : 3.14159274101257E+000
+                "area" : 3.14159268000000E+000
             }
         },
         "solver" : {

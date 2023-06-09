@@ -121,6 +121,9 @@ program main
     ! Initialize panel solver
     call solver%init(solver_settings, body_mesh, freestream_flow)
 
+    ! Calculate shadowing
+    call body_mesh%find_shadowed_panels(freestream_flow)
+
     ! Solve
     call solver%solve(body_mesh)
 

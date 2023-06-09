@@ -1,0 +1,43 @@
+{
+    "info" : {
+        "generated_by" : "NewPan (c) 2023 USU Aerolab",
+        "executed" : "Thu Jun  8 11:34:25 2023"
+    },
+    "mesh_info" : {
+        "N_body_panels" : 3108,
+        "N_body_vertices" : 1597
+    },
+    "total_forces" : {
+        "C_x" : 1.27220796421170E-002,
+        "C_y" : -1.21347332182609E-008,
+        "C_z" : -1.85274977582139E-008
+    },
+    "timing" : {
+        "runtime" : 6.86999976634979E-001
+    },
+    "input" : {
+        "flow" : {
+            "freestream_direction" : [
+                    -9.95999991893768E-001,
+                    0.00000000000000E+000,
+                    0.00000000000000E+000
+                ],
+            "mach_number" : 5,
+            "gamma" : 1.39999997615814E+000
+        },
+        "geometry" : {
+            "file" : "meshes/tangent_ogive_medium.vtk",
+            "reference" : {
+                "area" : 3.14159202575684E+000
+            }
+        },
+        "solver" : {
+            "windward_method" : "kaufman",
+            "leeward_method" : "none"
+        },
+        "output" : {
+            "body_file" : "results/tangent_ogive_K_M_5_AoA_0.vtk",
+            "report_file" : "results/tangent_ogive_K_M_5_AoA_0.json"
+        }
+    }
+}

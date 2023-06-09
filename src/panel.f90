@@ -7,17 +7,21 @@ module panel_mod
     
     type panel
 
-        real, dimension(3) :: normal, dC_f, centr
+        real, dimension(3) :: normal, dC_f, centr, centr_pro
         integer, dimension(3) :: vert_ind
         real :: c_p=0, norm_mag, area, m_surf, theta, phi
+        real :: x_min_pro, x_max_pro, y_min_pro, y_max_pro, z_min_pro, z_max_pro ! Outline of projected panel
+        real, dimension(3) :: s12_pro, s23_pro, s31_pro ! Projected side vectors
         integer :: N=3
         type(vertex_pointer), dimension(:), allocatable :: vertices
-        logical :: seperated=.false.
+        real, dimension(:), allocatable :: panel_shadowing
+        logical :: seperated=.false., shadowed=.false.
 
         contains
 
         procedure :: calc_norm => panel_calc_norm
         procedure :: calc_centroid => panel_calc_centroid
+        procedure :: calc_projected_outline => panel_calc_projected_outline
         procedure :: calc_pressure_newton => panel_calc_pressure_newton
         procedure :: calc_pressure_prandtl => panel_calc_pressure_prandtl
         procedure :: get_vertex_loc => panel_get_vertex_loc
@@ -98,6 +102,38 @@ contains
         this%c_p = - ((gamma + 1)/2 * this%theta**2 * (sqrt(1 + ( 4 / ((gamma + 1) * m * this%theta))**2) - 1))
 
     end subroutine panel_calc_pressure_prandtl
+
+    subroutine panel_calc_projected_outline(this, projected_verts)
+
+        implicit none
+        
+        class(panel), intent(inout) :: this
+        type(vertex), dimension(:), allocatable, intent(in) :: projected_verts
+
+        real, dimension(3) :: x_s, y_s, z_s
+
+        x_s = [projected_verts(this%vert_ind(1))%location(1), &
+                projected_verts(this%vert_ind(2))%location(1), &
+                projected_verts(this%vert_ind(3))%location(1)]
+
+        this%x_min_pro = min(x_s(1),x_s(2),x_s(3))
+        this%x_max_pro = max(x_s(1),x_s(2),x_s(3))
+
+        y_s = [projected_verts(this%vert_ind(1))%location(2), &
+                projected_verts(this%vert_ind(2))%location(2), &
+                projected_verts(this%vert_ind(3))%location(2)]
+
+        this%y_min_pro = min(y_s(1),y_s(2),y_s(3))
+        this%y_max_pro = max(y_s(1),y_s(2),y_s(3))
+
+        z_s = [projected_verts(this%vert_ind(1))%location(3), &
+                projected_verts(this%vert_ind(2))%location(3), &
+                projected_verts(this%vert_ind(3))%location(3)]
+
+        this%z_min_pro = min(z_s(1),z_s(2),z_s(3))
+        this%z_max_pro = max(z_s(1),z_s(2),z_s(3))
+
+    end subroutine panel_calc_projected_outline
 
     function panel_get_vertex_loc(this, i) result(loc)
 

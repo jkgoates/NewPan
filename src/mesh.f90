@@ -10,7 +10,7 @@ module mesh_mod
         integer :: N_verts, N_panels = 0
         type(vertex), allocatable, dimension(:) :: vertices
         type(panel), allocatable, dimension(:) :: panels
-        
+        type(vertex), allocatable, dimension(:) :: projected_verts
     
     contains
         

@@ -1,11 +1,11 @@
 {
     "flow": {
-        "freestream_direction": [-0.965926,0.258819,0.0],
+        "freestream_direction": [-1.0,0.0,0.0],
         "mach_number" : 5,
         "gamma" : 1.4
     },
     "geometry" : {
-        "file": "meshes/tangent_ogive_medium.vtk",
+        "file": "meshes/shadowed_body.vtk",
         "reference": {
             "area": 3.141592
         }
@@ -15,7 +15,7 @@
         "leeward_method" : "none"
     },
     "output": {
-        "body_file": "results/tangent_ogive_K_M_5_AoA_15.vtk",
-        "report_file": "results/tangent_ogive_K_M_5_AoA_15.json"
+        "body_file": "results/shadowed_body_test.vtk",
+        "report_file": "results/shadowed_body_test.json"
     }
 }

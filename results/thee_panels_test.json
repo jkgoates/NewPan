@@ -1,0 +1,43 @@
+{
+    "info" : {
+        "generated_by" : "NewPan (c) 2023 USU Aerolab",
+        "executed" : "Fri Jun  9 10:08:30 2023"
+    },
+    "mesh_info" : {
+        "N_body_panels" : 3,
+        "N_body_vertices" : 9
+    },
+    "total_forces" : {
+        "C_x" : 3.52646556564455E+000,
+        "C_y" : 0.00000000000000E+000,
+        "C_z" : 0.00000000000000E+000
+    },
+    "timing" : {
+        "runtime" : 6.30000000000000E-002
+    },
+    "input" : {
+        "flow" : {
+            "freestream_direction" : [
+                    -1.00000000000000E+000,
+                    0.00000000000000E+000,
+                    0.00000000000000E+000
+                ],
+            "mach_number" : 5,
+            "gamma" : 1.40000000000000E+000
+        },
+        "geometry" : {
+            "file" : "meshes/three_panels.vtk",
+            "reference" : {
+                "area" : 3.14159200000000E+000
+            }
+        },
+        "solver" : {
+            "windward_method" : "kaufman",
+            "leeward_method" : "none"
+        },
+        "output" : {
+            "body_file" : "results/three_panels_test.vtk",
+            "report_file" : "results/thee_panels_test.json"
+        }
+    }
+}

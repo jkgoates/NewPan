@@ -25,6 +25,8 @@ COMPILER = gfortran
 
 # Flags
 DEBUG_FLAGS = -fbounds-check -fbacktrace -g
+OMP_FLAG = -fopenmp
+FLAGS = -O2 -fdefault-real-8
 #DISLIN_FLAGS = -luser32 -lgdi32 -lopengl32
 
 # DISLIN Command 
@@ -36,7 +38,7 @@ PROGRAM = newpan.exe
 
 # Default make
 default:
-	$(COMPILER) $(FLAGS) -o $(PROGRAM) $(COMMON_PATHS) $(SRC_PATHS) $(MAIN_PATH)
+	$(COMPILER) $(FLAGS) $(OMP_FLAG) -o $(PROGRAM) $(COMMON_PATHS) $(SRC_PATHS) $(MAIN_PATH)
 
 # Linux make
 #linux:
@@ -44,11 +46,11 @@ default:
 	
 # Debug option
 debug:
-	$(COMPILER) $(FLAGS) $(DEBUG_FLAGS) -o $(PROGRAM) $(COMMON_PATHS) $(SRC_PATHS) $(MAIN_PATH) 
+	$(COMPILER) $(FLAGS) $(OMP_FLAG) $(DEBUG_FLAGS) -o $(PROGRAM) $(COMMON_PATHS) $(SRC_PATHS) $(MAIN_PATH) 
 
 # Debug with all warnings
 wall:
-	$(COMPILER) $(FLAGS) $(DEBUG_FLAGS) -Wall -o $(PROGRAM) $(COMMON_PATHS) $(SRC_PATHS) $(MAIN_PATH) 
+	$(COMPILER) $(FLAGS) $(OMP_FLAG) $(DEBUG_FLAGS) -Wall -o $(PROGRAM) $(COMMON_PATHS) $(SRC_PATHS) $(MAIN_PATH) 
 
 # Debug with all warnings
 debug-serial:
