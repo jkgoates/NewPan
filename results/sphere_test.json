@@ -1,0 +1,43 @@
+{
+    "info" : {
+        "generated_by" : "NewPan (c) 2023 USU Aerolab",
+        "executed" : "Thu Jun 15 13:50:16 2023"
+    },
+    "mesh_info" : {
+        "N_body_panels" : 7200,
+        "N_body_vertices" : 3602
+    },
+    "total_forces" : {
+        "C_x" : 9.11979697567899E-001,
+        "C_y" : -1.90674568912272E-018,
+        "C_z" : -5.88187366813583E-018
+    },
+    "timing" : {
+        "runtime" : 1.72000000000000E-001
+    },
+    "input" : {
+        "flow" : {
+            "freestream_direction" : [
+                    -1.00000000000000E+000,
+                    0.00000000000000E+000,
+                    0.00000000000000E+000
+                ],
+            "mach_number" : 5,
+            "gamma" : 1.40000000000000E+000
+        },
+        "geometry" : {
+            "file" : "meshes/sphere.vtk",
+            "reference" : {
+                "area" : 3.14159200000000E+000
+            }
+        },
+        "solver" : {
+            "windward_method" : "kaufman",
+            "leeward_method" : "none"
+        },
+        "output" : {
+            "body_file" : "results/sphere_test.vtk",
+            "report_file" : "results/sphere_test.json"
+        }
+    }
+}

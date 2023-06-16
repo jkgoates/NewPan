@@ -107,16 +107,7 @@ module vtk_mod
 
             read(dummy_read,*) N, i1, i2, i3
 
-            panels(i)%vert_ind = [i1+1,i2+1,i3+1]
-
-            ! Calculate Normal
-            call panel_calc_norm(panels(i), vertices)
-
-            ! Calculate Panel Area
-            panels(i)%area = panels(i)%norm_mag/2
-            
-            ! Calculate Centroid
-            call panels(i)%calc_centroid(vertices)
+            call panels(i)%init(vertices(i1+1), vertices(i2+1), vertices(i3+1), i)
 
         end do
 
@@ -222,48 +213,31 @@ module vtk_mod
                 read(line,*) vertex_inds
 
                 ! Initialize first panel; need +1 because VTK uses 0-based indexing
-                panels(ind)%vert_ind = [vertex_inds(1)+1, vertex_inds(2)+1, vertex_inds(3)+1]
+                call panels(ind)%init(vertices(vertex_inds(1)+1), &
+                                      vertices(vertex_inds(2)+1), &
+                                      vertices(vertex_inds(3)+1), &
+                                      ind)
                 
-                ! Calculate Normal
-                call panels(ind)%calc_norm(vertices)
-
-                ! Calculate Panel Area
-                panels(ind)%area = panels(ind)%norm_mag/2
-
-                ! Calculate Centroid
-                call panels(ind)%calc_centroid(vertices)
-
                 ! Move on to second panel
                 if (N_words > 3) then
                     ind = ind + 1
 
                     ! Initialize second panel
-                    panels(ind)%vert_ind = [vertex_inds(4)+1, vertex_inds(5)+1, vertex_inds(6)+1]
+                    call panels(ind)%init(vertices(vertex_inds(4)+1), &
+                                          vertices(vertex_inds(5)+1), &
+                                          vertices(vertex_inds(6)+1), &
+                                          ind)
                     
-                    ! Calculate Normal
-                    call panel_calc_norm(panels(ind), vertices)
-
-                    ! Calculate Panel Area
-                    panels(ind)%area = panels(ind)%norm_mag/2
-                
-                    ! Calculate Centroid
-                    call panels(ind)%calc_centroid(vertices)
-
                     ! Move on to third panel
                     if (N_words > 6) then
                         ind = ind + 1
 
-                        ! Initialize second panel
-                        panels(ind)%vert_ind = [vertex_inds(7)+1, vertex_inds(8)+1, vertex_inds(9)+1]
+                        ! Initialize third panel
+                        call panels(ind)%init(vertices(vertex_inds(7)+1), &
+                                              vertices(vertex_inds(8)+1), &
+                                              vertices(vertex_inds(9)+1), &
+                                              ind)
                         
-                        ! Calculate Normal
-                        call panel_calc_norm(panels(ind), vertices)
-
-                        ! Calculate Panel Area
-                        panels(ind)%area = panels(ind)%norm_mag/2
-                        
-                        ! Calculate Centroid
-                        call panels(ind)%calc_centroid(vertices)
                     end if
                 end if
 
@@ -343,7 +317,7 @@ module vtk_mod
             write(unit, '(i20)', advance='no') 3
 
             do j=1,panels(i)%N
-                write(unit, '(i20)', advance='no') panels(i)%vert_ind(j) -1
+                write(unit, '(i20)', advance='no') panels(i)%get_vertex_index(j) -1
             end do
             
             write(unit,*)
@@ -404,6 +378,12 @@ module vtk_mod
         write(unit, '(a, a, a)') "VECTORS ", "centroid", " float"
         do i = 1, N_panels
             write(unit, '(e20.12, e20.12, e20.12)') panels(i)%centr(1), panels(i)%centr(2), panels(i)%centr(3)
+        end do
+
+        ! Write Surface velocity
+        write(unit, '(a, a, a)') "VECTORS ", "u", " float"
+        do i = 1, N_panels
+            write(unit, '(e20.12, e20.12, e20.12)') panels(i)%u(1), panels(i)%u(2), panels(i)%u(3)
         end do
 
         ! Write inclination angle

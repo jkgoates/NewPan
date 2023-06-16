@@ -1,0 +1,21 @@
+{
+    "flow": {
+        "freestream_direction": [-1.0, 0.0, 0.0],
+        "mach_number" : 5,
+        "gamma" : 1.4
+    },
+    "geometry" : {
+        "file": "test/meshes/sphere.vtk",
+        "reference": {
+            "area": 3.141592
+        }
+    },
+    "solver": {
+        "windward_method" : "modified-newtonian",
+        "leeward_method" : "prandtl-meyer"
+    },
+    "output": {
+        "body_file": "test/results/sphere_result.vtk",
+        "report_file": "test/results/report.json"
+    }
+}

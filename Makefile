@@ -10,7 +10,7 @@ COM_DIR = common
 BIN_DIR = bin
 
 # List common files (ordered based on dependency)
-COMMON_FILES = json.f95 json_xtnsn.f95 math.f90
+COMMON_FILES = linked_list.f90 json.f95 json_xtnsn.f95 math.f90 linalg.f90
 COMMON_PATHS = $(addprefix $(COM_DIR)/, $(COMMON_FILES))
 
 # List source files (ordered based on dependency)

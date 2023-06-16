@@ -55,6 +55,10 @@ contains
             write(*,*) "!!! Low supersonic Mach number selected. NewPan may report an inaccurate solution !!!"
         end if
 
+        ! Calculate freestream to stagnation pressure ratio
+        this%P_free_to_stag = (2/((this%gamma + 1)*this%M_inf**2))**(this%gamma/(this%gamma - 1)) &
+                    * ((2 * this%gamma * this%M_inf**2 - (this%gamma - 1))/(this%gamma + 1))**(1/(this%gamma - 1))
+
 
     end subroutine flow_init
 
@@ -76,14 +80,14 @@ contains
         implicit none
 
         class(flow), intent(inout) :: this
-        real :: P_free_to_stag, M_guess=1.1
+        real :: M_guess
         real, dimension(50) :: M_q, P_q, Qs
         integer, dimension(2) :: ind
         integer :: i, j
 
-        ! Calculate freestream to stagnation pressure ratio
-        P_free_to_stag = (2/((this%gamma + 1)*this%M_inf**2))**(this%gamma/(this%gamma - 1)) &
-                        * ((2 * this%gamma * this%M_inf**2 - (this%gamma - 1))/(this%gamma + 1))**(1/(this%gamma - 1))
+        ! Initialize
+        M_guess = 1.1
+
         ! Make an initial guess at mach number
         M_q(1) = M_guess
 
@@ -108,14 +112,14 @@ contains
                     if (j == ind(1) .or. j == ind(2)) then
                         cycle
                     end if
-                    if ( abs(P_free_to_stag - P_q(j)) < abs(P_free_to_stag - P_q(ind(2))) ) then
-                        if (abs(P_free_to_stag - P_q(ind(2))) < abs(P_free_to_stag - P_q(ind(1)))) then
+                    if ( abs(this%P_free_to_stag - P_q(j)) < abs(this%P_free_to_stag - P_q(ind(2))) ) then
+                        if (abs(this%P_free_to_stag - P_q(ind(2))) < abs(this%P_free_to_stag - P_q(ind(1)))) then
                             ind(1) = ind(2)
                         end if
                         ind(2) = j
                         cycle
                     end if
-                    if ( abs(P_free_to_stag - P_q(j)) < abs(P_free_to_stag - P_q(ind(1))) ) then
+                    if ( abs(this%P_free_to_stag - P_q(j)) < abs(this%P_free_to_stag - P_q(ind(1))) ) then
                         ind(1) = j
                         cycle
                     end if
@@ -123,7 +127,7 @@ contains
             end if
             
             ! Check for convergence
-            if (abs(P_q(i)-P_free_to_stag) < 1e-6) then
+            if (abs(P_q(i)-this%P_free_to_stag) < 1e-6) then
                 this%M_q = M_q(i)
                 this%Q = Qs(i)
                 exit
@@ -132,7 +136,7 @@ contains
             ! Interpolate if not at end
             if (i /= 20) then
                 M_q(i+1) = (M_q(ind(2)) - M_q(ind(1))) / (P_q(ind(2)) - P_q(ind(1))) &
-                            * (P_free_to_stag - P_q(ind(1))) + M_q(ind(1))
+                            * (this%P_free_to_stag - P_q(ind(1))) + M_q(ind(1))
 
             end if
 
@@ -145,10 +149,10 @@ contains
         else
             write(*,'(a i2 a)') "       Solution converged in ", i, " iterations."
             write(*,*) "      Matching Mach Number: ", this%m_q
-            this%P_free_to_stag = P_free_to_stag
         end if
+
         ! Calculate angle of matching point
-        this%delta_q = asin(sqrt((this%q - P_free_to_stag)/(1 - P_free_to_stag)))
+        this%delta_q = asin(sqrt((this%Q - this%P_free_to_stag)/(1 - this%P_free_to_stag)))
         write(*,*) "      Matching inclination: ", this%delta_q
 
 

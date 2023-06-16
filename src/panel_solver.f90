@@ -34,6 +34,8 @@ module panel_solver_mod
             ! Solve
             procedure :: solve => panel_solver_solve
 
+            ! Surface property calculations
+
     end type panel_solver
 
 contains
@@ -174,7 +176,7 @@ contains
 
             norm = body%panels(i)%normal
 
-            ! Calculate inclination of the panel normal with respect to the freestream
+            ! Calculate inclination of the panel normal vector with respect to the freestream
             body%panels(i)%phi = acos(dot_product(this%freestream%v_inf,norm))
 
             ! Calculate panel inclination
@@ -273,9 +275,9 @@ contains
 
         do i = 1, body_mesh%N_panels
             ! Check panel faces away from freestream
-            if (body_mesh%panels(i)%theta <= 0 .and. body_mesh%panels(i)%theta >= this%freestream%theta_min) then
+            if (body_mesh%panels(i)%theta < 0 .and. body_mesh%panels(i)%theta > this%freestream%theta_min) then
                 call body_mesh%panels(i)%calc_pressure_prandtl(this%freestream%gamma, this%freestream%M_inf)
-            else if (body_mesh%panels(i)%theta < this%freestream%theta_min) then
+            else if (body_mesh%panels(i)%theta <= this%freestream%theta_min) then
                 body_mesh%panels(i)%c_p = 0
                 body_mesh%panels(i)%seperated = .true.
             end if

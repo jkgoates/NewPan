@@ -14,6 +14,8 @@ module surface_mesh_mod
     type, extends(mesh) :: surface_mesh
 
         real, dimension(:), allocatable :: C_p_str, C_p_mod, C_p_kau ! Pressure Coefficients
+        integer :: N_edges
+        type(edge), allocatable, dimension(:) :: edges
         !real, dimension(:), allocatable :: dC_f ! Forces
         real, dimension(3) :: C_f=[0,0,0] ! Forces
         real :: S_ref ! Reference parameters
@@ -23,15 +25,21 @@ module surface_mesh_mod
         ! Initialization
         procedure :: init => surface_mesh_init
         procedure :: load_mesh_file => surface_mesh_load_mesh_file
+        procedure :: locate_adjacent_panels => surface_mesh_locate_adjacent_panels
+        procedure :: store_adjacent_vertices => surface_mesh_store_adjacent_vertices
+        procedure :: check_panels_adjacent => surface_mesh_check_panels_adjacent
+        procedure :: surface_fit => surface_mesh_surface_fit
         
         ! Panel Shadowing
         procedure :: find_shadowed_panels => surface_mesh_find_shadowed_panels
         procedure :: project => surface_mesh_project
-        procedure :: possible_panel_shadowing => surface_mesh_possible_panel_shadowing
-        procedure :: panels_determine_overlap => surface_mesh_panels_determine_overlap
-        procedure :: calc_point_overlap => surface_mesh_calc_point_overlap
         procedure :: shadowed_vertices => surface_mesh_shadowed_vertices
         procedure :: panel_over_point => surface_mesh_panel_over_point
+
+        ! Initialization Based on flow
+        procedure :: init_with_flow => surface_mesh_init_with_flow
+
+        ! Surface 
 
 
 
@@ -57,6 +65,12 @@ contains
 
         ! Store settings
         call json_xtnsn_get(settings, 'reference.area', this%S_ref, 1.)
+
+        ! Locate adjacent panels
+        call this%locate_adjacent_panels()
+
+        ! Determine surface element equations
+        call this%surface_fit()
 
     end subroutine surface_mesh_init
 
@@ -103,6 +117,239 @@ contains
         write(*,'(a, i7, a, i7, a)') "      Surface mesh has ", this%N_verts, " vertices and ", &
                                                     this%N_panels, " panels."
     end subroutine surface_mesh_load_mesh_file
+
+    subroutine surface_mesh_locate_adjacent_panels(this)
+        ! Loops through panels to determine which are adjacent
+
+        implicit none
+
+        class(surface_mesh), intent(inout), target :: this
+
+        integer :: i, j, i_edge, edge_index_i, edge_index_j
+        integer,dimension(2) :: i_endpoints
+        integer, dimension(this%N_panels*3) :: panel1, panel2, vertex1, vertex2, edge_index1, edge_index2
+
+        write(*,'(a)',advance='no') "      Locating adjacent panels..."
+
+        ! Loop through each panel
+        this%N_edges = 0
+
+        !$OMP parallel do schedule(dynamic) private(j, i_endpoints, i_edge, edge_index_i, edge_index_j)
+        do i = 1, this%N_panels
+
+            ! Loop through each potential neighbor
+            neighbor_loop: do j = i+1, this%N_panels
+
+                ! Check if we've found all neighbors for this panel
+                if (all(this%panels(i)%abutting_panels /= 0)) exit neighbor_loop
+
+                ! Check if these are abutting
+                if (this%check_panels_adjacent(i, j, i_endpoints, edge_index_i, edge_index_j)) then
+
+                    !$OMP critical
+                    ! Update number of edges
+                    this%N_edges = this%N_edges + 1
+                    i_edge = this%N_edges
+
+                    ! Store vertices being adjacent to one another
+                    call this%store_adjacent_vertices(i_endpoints, i_edge)
+
+                    ! Store adjacent panels and panel edges
+                    edge_index1(i_edge) = edge_index_i
+                    edge_index2(i_edge) = edge_index_j
+
+                    ! Store information in arrays
+                    panel1(i_edge) = i
+                    panel2(i_edge) = j
+                    vertex1(i_edge) = i_endpoints(1)
+                    vertex2(i_edge) = i_endpoints(2)
+
+                    !$OMP end critical
+
+                end if
+
+            end do neighbor_loop
+
+        end do
+
+        ! Check for panels abutting empty space and add those edges
+        do i=1, this%N_panels
+
+            ! Check for an edge with no abutting panel
+            do j = 1, this%panels(i)%N
+                if (this%panels(i)%abutting_panels(j) == 0) then
+
+                    ! Get endpoint indices
+                    i_endpoints(1) = this%panels(i)%get_vertex_index(j)
+                    i_endpoints(2) = this%panels(i)%get_vertex_index(mod(j, this%panels(i)%N) + 1)
+
+                    ! Set up an edge
+                    this%N_edges = this%N_edges + 1
+                    i_edge = this%N_edges
+                    panel1(i_edge) = i
+                    panel2(i_edge) = 0 ! Placeholder
+                    vertex1(i_edge) = i_endpoints(1)
+                    vertex2(i_edge) = i_endpoints(2)
+                    edge_index1(i_edge) = j
+                    edge_index2(i_edge) = 0
+
+                    ! Store adjacent vertices
+                    call this%store_adjacent_vertices(i_endpoints, i_edge)
+
+                end if
+            end do
+        end do
+
+        ! Allocate edge storage
+        allocate(this%edges(this%N_edges))
+
+        ! Initialize edges
+        do i = 1, this%N_edges
+
+            ! Initialize
+            call this%edges(i)%init(vertex1(i), vertex2(i), panel1(i), panel2(i))
+
+            ! Store more information
+            this%edges(i)%edge_index_for_panel(1) = edge_index1(i)
+            this%edges(i)%edge_index_for_panel(2) = edge_index2(i)
+            this%panels(panel1(i))%edges(this%edges(i)%edge_index_for_panel(1)) = i
+            if (panel2(i) <= this%N_panels .and. panel2(i) > 0) then
+                this%panels(panel2(i))%edges(this%edges(i)%edge_index_for_panel(2)) = i
+            end if
+
+        end do
+
+        write(*,'(a, i7, a)') "Done. Found ", this%N_edges, " edges."
+
+
+    end subroutine surface_mesh_locate_adjacent_panels
+
+    subroutine surface_mesh_store_adjacent_vertices(this, i_verts, i_edge)
+        ! Stores that the given two vertices are adjacent
+
+        implicit none
+        
+        class(surface_mesh), intent(inout) :: this
+        integer, dimension(2), intent(in) :: i_verts
+        integer, intent(in) :: i_edge
+
+        ! Store that the vertices are adjacent
+        if (.not. this%vertices(i_verts(1))%adjacent_vertices%is_in(i_verts(2))) then
+            call this%vertices(i_verts(1))%adjacent_vertices%append(i_verts(2))
+        end if
+        if (.not. this%vertices(i_verts(2))%adjacent_vertices%is_in(i_verts(1))) then
+            call this%vertices(i_verts(2))%adjacent_vertices%append(i_verts(1))
+        end if
+
+        ! Store that they touch this edge
+        call this%vertices(i_verts(1))%adjacent_edges%append(i_edge)
+        call this%vertices(i_verts(2))%adjacent_edges%append(i_edge)
+
+    end subroutine surface_mesh_store_adjacent_vertices
+
+    function surface_mesh_check_panels_adjacent(this, i, j, i_endpoints, edge_index_i, edge_index_j) result(adjacent)
+        ! Checks whether  panels i and j are adjacent
+
+        class(surface_mesh), intent(inout) :: this
+        integer, intent(in) :: i, j
+        integer, dimension(2), intent(out) :: i_endpoints
+        integer, intent(out) :: edge_index_i, edge_index_j
+
+        logical :: adjacent
+
+        logical :: already_found_shared
+        integer :: m, n, m1, n1, temp
+
+        ! Initialize
+        adjacent = .false.
+
+        ! Initialize for this panel pair
+        already_found_shared = .false.
+
+        ! Check if the panels are abutting
+        abutting_loop: do m = 1, this%panels(i)%N
+            do n = 1, this%panels(j)%N
+
+                ! Check if they have the same index
+                if (this%panels(i)%get_vertex_index(m) == this%panels(j)%get_vertex_index(n)) then
+
+                    ! Previously found a shared vertex, so we have abutting panels
+                    if (already_found_shared) then
+
+                        adjacent = .true.
+
+                        ! Store the second shared vertex
+                        i_endpoints(2) = this%panels(i)%get_vertex_index(m)
+
+                        ! Check order; edge should proceed counterclockwise about panel i
+                        if (m1 == 1 .and. m == this%panels(i)%N) then
+                            temp = i_endpoints(1)
+                            i_endpoints(1) = i_endpoints(2)
+                            i_endpoints(2) = temp
+                        end if
+
+                        ! Store adjacent panels and panel edges
+                        ! This stores the adjacent panels and edges according to the index of that edge
+                        ! for the current panel
+
+                        ! Store that i is adjacent to j
+                        if ( (n1 == 1 .and. n == this%panels(j)%N) .or. (n == 1 .and. n1 == this%panels(j)%N) ) then
+                            this%panels(j)%abutting_panels(this%panels(j)%N) = i
+                            edge_index_j = this%panels(j)%N
+                        else
+                            n1 = min(n,n1)
+                            this%panels(j)%abutting_panels(n1) = i
+                            edge_index_j = n1
+                        end if
+
+                        ! Store that j is adjacent to i
+                        if (m1 == 1 .and. m== this%panels(i)%N) then ! Nth edge
+                            this%panels(i)%abutting_panels(m) = j
+                            edge_index_i = m
+                        else ! 1st or 2nd edge
+                            this%panels(i)%abutting_panels(m1) = j
+                            edge_index_i = m1
+                        end if
+
+                        return
+
+                    ! First shared vertex
+                    else
+
+                        already_found_shared = .true.
+                        i_endpoints(1) = this%panels(i)%get_vertex_index(m)
+                        m1 = m
+                        n1 = n
+
+                    end if
+                end if
+            
+            end do
+
+        end do abutting_loop
+
+
+
+    end function surface_mesh_check_panels_adjacent
+
+    subroutine surface_mesh_init_with_flow(this, freestream)
+
+        implicit none
+        
+        class(surface_mesh), intent(inout) :: this
+        type(flow), intent(in) :: freestream
+
+        real, dimension(3) :: v_inf
+        integer :: i
+
+        ! Calculate Surface velocity directions
+        v_inf = reshape(freestream%v_inf, [3])
+        do i = 1, this%N_panels
+            call this%panels(i)%calc_velocity_vector(v_inf)
+        end do
+
+
+    end subroutine surface_mesh_init_with_flow
 
     subroutine surface_mesh_find_shadowed_panels(this, freestream)
 
@@ -193,231 +440,6 @@ contains
 
     end subroutine surface_mesh_project
 
-    subroutine surface_mesh_possible_panel_shadowing(this, freestream)
-        
-        implicit none
-        
-        class(surface_mesh), intent(inout) :: this
-        type(flow), intent(in) :: freestream
-        integer :: i,j,k,l
-        logical :: check_1, check_2, check_3
-        
-        ! Calculate panel limits
-        !$OMP parallel do schedule(static)
-        do i = 1, this%N_panels
-            call this%panels(i)%calc_projected_outline(this%projected_verts)
-        end do
-
-        !$OMP parallel do private(j,k,l,check_1,check_2,check_3) &
-        !$OMP & schedule(dynamic) shared(this, freestream)
-        do i = 1, this%N_panels
-
-            ! Allocate shadowing array
-            !allocate(this%panels(i)%panel_shadowing(this%N_panels))
-            !do j=1,this%N_panels
-            !    this%panels(i)%panel_shadowing(j) = 0.0
-            !end do
-            
-            ! Only panels facing the freestream can have a shadowing effect
-            if (this%panels(i)%theta <= 0) cycle
-
-            ! Loop through all other panels and find possible intersections
-            secondary: do j = 1, this%N_panels
-
-                ! Skip if the same panel
-                if (j==i) cycle secondary
-
-                ! Skip if already shadowed
-                !if (this%panels(j)%shadowed) cycle secondary
-
-                ! Panels that share a vertex cannot shadow each other
-                do k = 1,3
-                    do l = 1,3
-                        if (this%panels(i)%vert_ind(k) == this%panels(j)%vert_ind(l)) then
-                            cycle secondary
-                        end if
-                    end do
-                end do
-
-                ! Check if outlines intersect
-                check_1 = this%panels(i)%x_min_pro > this%panels(j)%x_max_pro .or. &
-                          this%panels(j)%x_min_pro > this%panels(i)%x_max_pro
-
-                if (check_1) cycle secondary
-
-                check_2 = this%panels(i)%y_min_pro > this%panels(j)%y_max_pro .or. &
-                          this%panels(j)%y_min_pro > this%panels(i)%y_max_pro
-
-                if (check_2) cycle secondary
-                
-                check_3 = this%panels(i)%z_min_pro > this%panels(j)%z_max_pro .or. &
-                          this%panels(j)%z_min_pro > this%panels(i)%z_max_pro
-
-                if (check_3) cycle secondary
-
-                ! Panels can only shadow other panels downstream of themselves
-                if (dot_product(this%panels(i)%centr,-freestream%v_inf) < &
-                    dot_product(this%panels(j)%centr,-freestream%v_inf)) then
-                    cycle secondary
-                end if
-
-
-                ! If the loop has gotten to this point, there's a chance that the panel i shadows panel j
-                !$OMP critical
-                this%panels(i)%panel_shadowing(j) = 1.0
-                !this%panels(j)%shadowed = .true.
-                !$OMP end critical
-
-
-
-            end do secondary
-
-        end do
-
-    end subroutine surface_mesh_possible_panel_shadowing
-
-    subroutine surface_mesh_panels_determine_overlap(this)
-
-        implicit none
-        
-        class(surface_mesh), intent(inout) :: this
-
-        integer ::i,j
-        logical :: overlapped
-
-        ! Calculate side vectors for all panels
-        !$OMP parallel do schedule(static)
-        do i = 1, this%N_panels
-            this%panels(i)%s12_pro = this%projected_verts(this%panels(i)%vert_ind(2))%location &
-                                    -this%projected_verts(this%panels(i)%vert_ind(1))%location
-
-            this%panels(i)%s23_pro = this%projected_verts(this%panels(i)%vert_ind(3))%location &
-                                    -this%projected_verts(this%panels(i)%vert_ind(2))%location
-
-            this%panels(i)%s31_pro = this%projected_verts(this%panels(i)%vert_ind(1))%location &
-                                    -this%projected_verts(this%panels(i)%vert_ind(3))%location
-
-        end do
-
-        !$OMP parallel do private(j,overlapped) &
-        !$OMP & schedule(dynamic) shared(this)
-        ! Loop through panels and calculate overlap with each possible panel
-        do i = 1, this%N_panels
-            ! Downstream facing panels cannot shadow
-            if (this%panels(i)%theta <= 0.0) cycle
-
-            secondary: do j = 1, size(this%panels(i)%panel_shadowing)
-                ! Skip if the same panel 
-                if (i == j) cycle secondary
-
-                ! Skip if panel i does not possibly shadow panel j 
-                if (this%panels(i)%panel_shadowing(j) == 0) cycle secondary
-
-                ! Otherwise run the panel overlap calculations
-                call this%calc_point_overlap(this%panels(i), this%panels(j), overlapped)
-
-
-                !$OMP critical
-                ! Check if panel is already overlapped
-                if (overlapped) then
-                    this%panels(j)%shadowed = 1.0
-                end if
-                !$OMP end critical
-
-
-            end do secondary
-        end do
-
-
-    end subroutine surface_mesh_panels_determine_overlap
-
-    subroutine surface_mesh_calc_point_overlap(this, pan_1, pan_2, overlapped)
-
-        implicit none
-        
-        class(surface_mesh), intent(inout) :: this
-        type(panel), intent(inout) :: pan_1, pan_2
-        logical, intent(inout) :: overlapped
-
-        real, dimension(:), allocatable :: side, base_point, b, proj, point, centr, proj_point, err, c
-        real, dimension(:,:), allocatable :: P, side_vec, side_vec_T, b_vec, proj_vec
-        type(panel) :: main_panel, test_panel
-        integer :: i, j, k
-        real :: left_right
-        integer, dimension(3) :: lefts = 0
-        overlapped = .false.
-
-        ! Evaluate for each panel
-        panels: do i = 1, 2
-            ! Identify panels
-            if (i == 1) then
-                main_panel = pan_1
-                test_panel = pan_2
-            else
-                main_panel = pan_2
-                test_panel = pan_1
-            end if
-
-            lefts = 0
-
-            ! Get the centroid of the main panel
-            centr = main_panel%centr_pro
-
-            ! Each side of the panel
-            sides: do j = 1, 3
-
-                ! Calculate the projection matrix for the side
-                select case(j)
-                case (1)
-                side = main_panel%s12_pro
-                case (2)
-                side = main_panel%s23_pro
-                case (3)
-                side = main_panel%s31_pro
-                end select
-
-                side_vec = reshape(side, [3,1])
-                side_vec_T = transpose(side_vec)
-
-                P = matmul(side_vec, side_vec_T)/dot_product(side, side)
-
-                base_point = this%projected_verts(main_panel%vert_ind(j))%location
-
-                ! Each point on the other panel
-                points: do k = 1,3
-
-                    point = this%projected_verts(test_panel%vert_ind(k))%location
-                    b = point - base_point
-                    b_vec = reshape(b, [3,1])
-                    
-                    ! Project point onto side
-                    proj_vec = matmul(P,b_vec)
-                    proj = reshape(proj_vec, [3])
-                    proj_point = proj + base_point
-
-                    ! Determine error and centroid vector
-                    err = point - proj_point
-                    c = centr - proj_point
-
-                    ! Do the left right check
-                    left_right = dot_product(err,c)
-
-                    ! Update the lefts array
-                    if (left_right > 0) lefts(k) = lefts(k) + 1
-
-
-                end do points
-
-            end do sides
-
-            if(lefts(1) == 3) overlapped = .true.
-            if(lefts(2) == 3) overlapped = .true.
-            if(lefts(3) == 3) overlapped = .true.
-
-        end do panels
-
-    end subroutine surface_mesh_calc_point_overlap
-
     subroutine surface_mesh_shadowed_vertices(this, freestream)
 
         implicit none
@@ -429,16 +451,15 @@ contains
         logical :: check_x, check_y, check_z
         
         ! Calculate side vectors for all panels
-        !$OMP parallel do schedule(static)
         do i = 1, this%N_panels
-            this%panels(i)%s12_pro = this%projected_verts(this%panels(i)%vert_ind(2))%location &
-                                    -this%projected_verts(this%panels(i)%vert_ind(1))%location
+            this%panels(i)%s12_pro = this%projected_verts(this%panels(i)%get_vertex_index(2))%location &
+                                    -this%projected_verts(this%panels(i)%get_vertex_index(1))%location
 
-            this%panels(i)%s23_pro = this%projected_verts(this%panels(i)%vert_ind(3))%location &
-                                    -this%projected_verts(this%panels(i)%vert_ind(2))%location
+            this%panels(i)%s23_pro = this%projected_verts(this%panels(i)%get_vertex_index(3))%location &
+                                    -this%projected_verts(this%panels(i)%get_vertex_index(2))%location
 
-            this%panels(i)%s31_pro = this%projected_verts(this%panels(i)%vert_ind(1))%location &
-                                    -this%projected_verts(this%panels(i)%vert_ind(3))%location
+            this%panels(i)%s31_pro = this%projected_verts(this%panels(i)%get_vertex_index(1))%location &
+                                    -this%projected_verts(this%panels(i)%get_vertex_index(3))%location
 
         end do
         
@@ -457,9 +478,9 @@ contains
 
                 ! A panel cannot shadow it's own vertices
                 !!! This check needs to be refined
-                if (this%panels(i)%vert_ind(1) == j) cycle vertex_loop
-                if (this%panels(i)%vert_ind(2) == j) cycle vertex_loop
-                if (this%panels(i)%vert_ind(3) == j) cycle vertex_loop
+                if (this%panels(i)%get_vertex_index(1) == j) cycle vertex_loop
+                if (this%panels(i)%get_vertex_index(2) == j) cycle vertex_loop
+                if (this%panels(i)%get_vertex_index(3) == j) cycle vertex_loop
 
                 ! Check if outlines intersect
                 check_x = (this%panels(i)%x_min_pro-0.01 > this%projected_verts(j)%location(1)) .or. &
@@ -488,8 +509,6 @@ contains
 
                 this%projected_verts(j)%shadowed = this%panel_over_point(this%panels(i), this%projected_verts(j))
 
-                if (this%projected_verts(j)%shadowed .and. j == 107) write(*,*) i
-
             end do vertex_loop
 
         end do panel_loop
@@ -500,7 +519,7 @@ contains
 
             ! Loop through the vertices
             do j = 1,3
-                if(this%projected_verts(this%panels(i)%vert_ind(j))%shadowed) then
+                if(this%projected_verts(this%panels(i)%get_vertex_index(j))%shadowed) then
                     this%panels(i)%shadowed = this%panels(i)%shadowed + 1
                 end if
 
@@ -548,7 +567,7 @@ contains
 
             P = matmul(side_vec, side_vec_T)/dot_product(side, side)
 
-            base_point = this%projected_verts(pan%vert_ind(j))%location
+            base_point = this%projected_verts(pan%get_vertex_index(j))%location
 
             point = vert%location
             b = point - base_point
@@ -581,6 +600,22 @@ contains
 
         
     end function surface_mesh_panel_over_point
+
+    subroutine surface_mesh_surface_fit(this)
+        implicit none
+        
+        class(surface_mesh), intent(inout) :: this
+
+        integer :: i
+
+        ! Loop through panels and calc surface fit
+        do i = 1, this%N_panels
+            call this%panels(i)%calc_surface_equation(this%vertices)
+
+        end do
+
+
+    end subroutine surface_mesh_surface_fit
 
 
 end module surface_mesh_mod

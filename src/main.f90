@@ -110,6 +110,9 @@ program main
     ! Initialize flow
     call freestream_flow%init(flow_settings)
 
+    ! Initialize surface mesh with flow
+    call body_mesh%init_with_flow(freestream_flow)
+
     if (verbose) then
         write(*,*)
         write(*,*) "Initializing based on flow properties"
@@ -184,7 +187,7 @@ program main
     end if
 
     ! Goodbye
-    write(*,'(a, f10.4, a)') " New Pan Execution Time", runtime, " s"
+    write(*,'(a, f10.4, a)') " NewPan Execution Time", runtime, " s"
 
     write(*,*)
 

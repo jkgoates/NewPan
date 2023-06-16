@@ -1,0 +1,21 @@
+{
+    "flow": {
+        "freestream_direction": [-1.0, 0.0, 0.0],
+        "mach_number" : 5,
+        "gamma" : 1.4
+    },
+    "geometry" : {
+        "file": "test/meshes/biconvex_airfoil.vtk",
+        "reference": {
+            "area": 1.0
+        }
+    },
+    "solver": {
+        "windward_method" : "straight-newtonian",
+        "leeward_method" : "prandtl-meyer"
+    },
+    "output": {
+        "body_file": "test/results/biconvex_airfoil_result.vtk",
+        "report_file": "test/results/report.json"
+    }
+}
