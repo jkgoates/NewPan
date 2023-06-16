@@ -10,7 +10,7 @@ module panel_mod
     type panel
 
         real, dimension(3) :: normal, dC_f, centr, centr_pro, u
-        real :: c_p=0, area, m_surf, theta, phi, shadowed=0
+        real :: c_p=0, area, M, V, theta, phi, shadowed=0
         real :: x_min_pro, x_max_pro, y_min_pro, y_max_pro, z_min_pro, z_max_pro ! Outline of projected panel
         real, dimension(3) :: s12_pro, s23_pro, s31_pro ! Projected side vectors
         integer :: index ! Panel index in mesh array
@@ -46,7 +46,8 @@ module panel_mod
 
         ! Property equations
         procedure :: calc_surface_equation => panel_calc_surface_equation
-
+        procedure :: calc_surface_mach => panel_calc_surface_mach
+        procedure :: calc_surface_velocity => panel_calc_surface_velocity
 
 
     end type panel
@@ -177,33 +178,33 @@ contains
 
         this%u = cross_product(cross_product(v_inf, this%normal), this%normal)
 
-        this%u = this%u / sqrt(this%u(1)**2 + this%u(2)**2 + this%u(3)**2)
+        this%u = this%V * this%u / sqrt(this%u(1)**2 + this%u(2)**2 + this%u(3)**2)
 
     end subroutine panel_calc_velocity_vector
 
-    subroutine panel_calc_pressure_newton(this, m, c_pmax)
+    subroutine panel_calc_pressure_newton(this, c_pmax)
         implicit none
         
         ! Calculates the pressure on a panel
-        real, intent(in) :: m, c_pmax
+        real, intent(in) :: c_pmax
         class(panel), intent(inout) :: this
 
-               ! Prandtl-meyer expansion on shadow region
-                !if (.not. this%seperated) then 
-                    !this%c_p = - ((gamma + 1)/2 * this%theta**2 * (sqrt(1 + ( 4 / ((gamma + 1) * m * this%theta))**2) - 1))
-           
         ! Newtonian Method on impact region
         this%c_p = c_pmax*sin(this%theta)**2
-        this%m_surf = m * cos(this%theta)
     
     end subroutine panel_calc_pressure_newton
 
-    subroutine panel_calc_pressure_prandtl(this, gamma, m)
+    subroutine panel_calc_pressure_prandtl(this, gamma, M_inf, M_1)
         
         class(panel), intent(inout) :: this
-        real, intent(in) :: gamma, m
+        real, intent(in) :: gamma, M_inf, M_1
 
-        this%c_p = - ((gamma + 1)/2 * this%theta**2 * (sqrt(1 + ( 4 / ((gamma + 1) * m * this%theta))**2) - 1))
+        real :: p2_p1
+
+        !this%c_p = - ((gamma + 1)/2 * this%theta**2 * (sqrt(1 + ( 4 / ((gamma + 1) * M_inf * this%theta))**2) - 1))
+
+        p2_p1 = (1 - (gamma - 1)/2 * M_1 * -this%theta)**(2*gamma/(gamma-1))
+        this%c_p = 2/(gamma * M_inf**2) * (p2_p1 - 1)
 
     end subroutine panel_calc_pressure_prandtl
 
@@ -307,5 +308,35 @@ contains
 
     
     end subroutine panel_calc_surface_equation
+
+    subroutine panel_calc_surface_mach(this, P, M_inf, gamma)
+
+        class(panel), intent(inout) :: this
+        real, intent(in) :: P, M_inf, gamma
+
+        real :: P_stag_to_panel
+
+        ! Avoid problems
+        if (this%c_p < 0.0) then
+            P_stag_to_panel = P*((0.0*gamma*M_inf**2)/2 + 1)
+        else 
+            P_stag_to_panel = P*((this%c_p*gamma*M_inf**2)/2 + 1)
+        end if
+
+        this%M = sqrt((P_stag_to_panel**(-(gamma - 1)/gamma) - 1) * (2 / (gamma - 1)))
+
+    end subroutine panel_calc_surface_mach
+
+    subroutine panel_calc_surface_velocity(this, M_inf, gamma)
+
+        implicit none
+        
+        class(panel), intent(inout) :: this
+        real, intent(in) :: M_inf, gamma
+
+        this%V = (this%M/M_inf)*sqrt((1 + (gamma - 1)/2 * M_inf**2)/(1 + (gamma - 1)/2 * this%M**2))
+
+
+    end subroutine panel_calc_surface_velocity
 
 end module panel_mod

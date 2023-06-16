@@ -61,7 +61,7 @@ def test_sphere_modified_newtonian_prandtl_meyer_from_free():
     print(Cy)
     print(Cz)
 
-    assert(abs(Cx - 0.942508208259478) < 1e-12)
+    assert(abs(Cx - 0.939448189087236) < 1e-12)
     assert(abs(Cy) < 1e-12)
     assert(abs(Cz) < 1e-12)
 
@@ -87,7 +87,7 @@ def test_biconvex_airfoil_straight_newton():
     print(Cy)
     print(Cz)
 
-    assert(abs(Cx - 0.0299773750971801) < 1e-12)
-    assert(abs(Cy - -1.20077381342086e-07) < 1e-12)
-    assert(abs(Cz - 6.74989605980092e-08) < 1e-12)
+    assert(abs(Cx - 0.029979455043952) < 1e-12)
+    assert(abs(Cy - -1.2035980047744e-07) < 1e-12)
+    assert(abs(Cz - 6.75945685934791e-08) < 1e-12)
     

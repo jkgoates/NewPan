@@ -9,8 +9,8 @@ module flow_mod
     type flow
     
         real, dimension(:), allocatable :: v_inf ! Nondimensional freestream velocity
-        real :: M_inf, gamma, m_q=0.0, q, delta_q, theta_min
-        real :: P_free_to_stag, m_sep
+        real :: M_inf, gamma, m_q=0.0, q, delta_q, theta_min, theta_sep
+        real :: P_free_to_stag, m_sep, nu_q, nu_max
 
         contains
         
@@ -18,7 +18,7 @@ module flow_mod
         procedure :: get_prandtl_meyer_matching_angle => flow_get_prandtl_meyer_matching_angle
         procedure :: solve_prandtl_meyer_mach => flow_solve_prandtl_meyer_mach
         procedure :: get_seperation_mach => flow_get_seperation_mach
-        procedure :: get_free_max_turning_angle => flow_get_free_max_turning_angle
+        procedure :: get_prandtl_max_turning_angle => flow_get_prandtl_max_turning_angle
         procedure :: init_kaufman => flow_init_kaufman
 
     end type flow
@@ -68,11 +68,23 @@ contains
         
         class(flow), intent(inout) :: this
 
+        real :: max_defl
+
         write(*,*) "Solving for the matching point"
         call this%get_prandtl_meyer_matching_angle()
         call this%get_seperation_mach()
 
+        ! Solve for min angle
+        ! Evaluate the prandtl meyer equation at mach one
+        this%nu_q = sqrt((this%gamma + 1) / (this%gamma - 1)) * atan2(sqrt((this%gamma - 1) / &
+                (this%gamma + 1) * (this%m_q**2 -1)),1.) - atan2(sqrt(this%m_q**2 - 1),1.)
 
+        !! Calculate max turning angle
+        this%nu_max = sqrt((this%gamma + 1) / (this%gamma - 1)) * atan2(sqrt((this%gamma - 1) / &
+                    (this%gamma + 1) * (this%m_sep**2 -1)),1.) - atan2(sqrt(this%m_sep**2 - 1),1.)
+        max_defl = this%nu_max - this%nu_q
+
+        this%theta_sep = this%delta_q - max_defl
 
     end subroutine flow_init_kaufman
 
@@ -165,32 +177,23 @@ contains
         class(flow), intent(inout) :: this
         real, intent(in) :: theta
 
-        real :: m_2, nu_1, nu_2, nu_max, max_defl
+        real :: m_2, nu_2, max_defl
         real, dimension(50) :: nu, Ms
         integer, dimension(2) :: ind
         integer :: i, j
 
-        ! Evaluate the prandtl meyer equation at mach one
-        nu_1 = sqrt((this%gamma + 1) / (this%gamma - 1)) * atan2(sqrt((this%gamma - 1) / &
-                (this%gamma + 1) * (this%m_q**2 -1)),1.) - atan2(sqrt(this%m_q**2 - 1),1.)
-
-        ! Calculate max turning angle
-        nu_max = sqrt((this%gamma + 1) / (this%gamma - 1)) * atan2(sqrt((this%gamma - 1) / &
-                    (this%gamma + 1) * (this%m_sep**2 -1)),1.) - atan2(sqrt(this%m_sep**2 - 1),1.)
-        max_defl = nu_max - nu_1
-        this%theta_min = this%delta_q - max_defl
 
         ! Initialize interpolation arrays
-        nu(1) = nu_1
-        nu(2) = nu_max
+        nu(1) = this%nu_q
+        nu(2) = this%nu_max
         Ms(1) = this%m_q
         Ms(2) = this%m_sep
 
         ! Make sure theta does not excede theta_max
-        if (theta >= this%theta_min) then
+        if (theta >= this%theta_sep) then
 
             ! Calculate nu_2
-            nu_2 = nu_1 + this%delta_q - theta
+            nu_2 = this%nu_q + this%delta_q - theta
 
             
 
@@ -239,9 +242,13 @@ contains
             end do
 
             ! Make sure calculated mach has not exceeded seperation mach
-            if (Ms(i) < this%m_sep) then
+            if (Ms(i-1) < this%m_sep) then
+            !if (i == 1001) then
+                m_2 = Ms(i-1)
+            !else
                 m_2 = Ms(i)
             end if
+            !end if
         
         else 
             write(*,*) "!!! Theta beyond seperation angle. Quitting..."
@@ -264,22 +271,23 @@ contains
 
     end subroutine flow_get_seperation_mach
 
-    subroutine flow_get_free_max_turning_angle(this)
+    subroutine flow_get_prandtl_max_turning_angle(this, M)
         
         implicit none
 
         class(flow), intent(inout) :: this
+        real, intent(in) :: M
 
         real :: nu_1, nu_2
         
         nu_2 = pi/2 * (sqrt((this%gamma + 1) / (this%gamma - 1)) - 1)
 
         nu_1 = sqrt((this%gamma + 1) / (this%gamma - 1)) * atan2(sqrt((this%gamma - 1) / &
-                    (this%gamma + 1) * (this%M_inf**2 -1)),1.) - atan2(sqrt(this%M_inf**2 - 1),1.)
+                    (this%gamma + 1) * (M**2 -1)),1.) - atan2(sqrt(M**2 - 1),1.)
 
         this%theta_min = -(nu_2 - nu_1)
 
-    end subroutine flow_get_free_max_turning_angle
+    end subroutine flow_get_prandtl_max_turning_angle
         
 
 end module flow_mod

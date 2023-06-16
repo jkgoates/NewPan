@@ -35,6 +35,7 @@ module panel_solver_mod
             procedure :: solve => panel_solver_solve
 
             ! Surface property calculations
+            procedure :: surface_velocities => panel_solver_surface_velocities
 
     end type panel_solver
 
@@ -64,6 +65,7 @@ contains
         ! Initialize matching point calculations
         if (this%windward_method == 'kaufman') then
             call this%freestream%init_kaufman()
+            call this%freestream%get_prandtl_max_turning_angle(this%freestream%m_sep)
         end if
 
     end subroutine panel_solver_init
@@ -115,6 +117,9 @@ contains
             write(*,*) "!!! Invalid leeward method selected. Quitting..."
             stop
         end select
+
+        ! Calculate pressure dependent properties
+        call this%surface_velocities(body_mesh)
 
 
     end subroutine panel_solver_solve
@@ -200,7 +205,7 @@ contains
             ! Check if it faces the freestream
 
             if (body_mesh%panels(i)%theta > 0) then
-                call body_mesh%panels(i)%calc_pressure_newton(this%freestream%M_inf, this%c_pmax)
+                call body_mesh%panels(i)%calc_pressure_newton(this%c_pmax)
             end if
 
         end do
@@ -220,7 +225,7 @@ contains
         do i = 1, body_mesh%N_panels
             ! Check if it faces the freestream
             if (body_mesh%panels(i)%theta > 0) then
-                call body_mesh%panels(i)%calc_pressure_newton(this%freestream%M_inf, this%c_pmax)
+                call body_mesh%panels(i)%calc_pressure_newton(this%c_pmax)
             end if
 
         end do
@@ -235,7 +240,9 @@ contains
         type(surface_mesh), intent(inout) :: body_mesh
         
         integer :: i
-        real :: m_i, m, gamma
+        real :: m_i, m, gamma, P_infty_ratio
+
+        
 
         ! Declutter
         gamma = this%freestream%gamma
@@ -245,18 +252,18 @@ contains
             ! Modified Newtonian for blunt panels
             if (body_mesh%panels(i)%theta > this%freestream%delta_q) then
                 body_mesh%panels(i)%c_p = this%c_pmax * sin(body_mesh%panels(i)%theta)**2
-                body_mesh%panels(i)%m_surf = m * cos(body_mesh%panels(i)%theta)
             ! Prandtl meyer expansion from matching point to assumed flow seperation
-            else if (body_mesh%panels(i)%theta > this%freestream%theta_min) then
+            else if (body_mesh%panels(i)%theta > this%freestream%theta_sep) then
                 m_i = this%freestream%solve_prandtl_meyer_mach(body_mesh%panels(i)%theta)
                 body_mesh%panels(i)%c_p = 2 / (gamma * m**2) * ((1/this%freestream%P_free_to_stag * &
                             ((2 / (2 + (gamma - 1) * m_i**2))**(gamma / (gamma - 1)))) - 1)
-                body_mesh%panels(i)%m_surf = m_i
-            ! Seperated flow
+            ! Continued expansion
+            else if (body_mesh%panels(i)%theta > this%freestream%theta_min) then
+                call body_mesh%panels(i)%calc_pressure_prandtl(this%freestream%gamma, this%freestream%M_inf, &
+                                                               this%freestream%m_sep)
             else
                 body_mesh%panels(i)%c_p = 0
                 body_mesh%panels(i)%seperated = .true.
-                body_mesh%panels(i)%m_surf = 0
             end if
         end do
 
@@ -271,12 +278,13 @@ contains
 
         integer :: i
 
-        call this%freestream%get_free_max_turning_angle()
+        call this%freestream%get_prandtl_max_turning_angle(this%freestream%M_inf)
 
         do i = 1, body_mesh%N_panels
             ! Check panel faces away from freestream
             if (body_mesh%panels(i)%theta < 0 .and. body_mesh%panels(i)%theta > this%freestream%theta_min) then
-                call body_mesh%panels(i)%calc_pressure_prandtl(this%freestream%gamma, this%freestream%M_inf)
+                call body_mesh%panels(i)%calc_pressure_prandtl(this%freestream%gamma, this%freestream%M_inf, &
+                                                               this%freestream%M_inf)
             else if (body_mesh%panels(i)%theta <= this%freestream%theta_min) then
                 body_mesh%panels(i)%c_p = 0
                 body_mesh%panels(i)%seperated = .true.
@@ -284,5 +292,34 @@ contains
         end do
 
     end subroutine panel_solver_calc_pressures_free_prandtl
+
+    subroutine panel_solver_surface_velocities(this, body_mesh)
+    ! Calculates the surface velocity ratio based on surface pressure coefficients
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
+        
+        integer :: i
+        real, dimension(3) :: v_inf
+
+        ! Initialize
+        v_inf = reshape(this%freestream%v_inf, [3])
+        ! Loop through panels
+        do i = 1, body_mesh%N_panels
+            
+            ! Calculate the surface mach number
+            call body_mesh%panels(i)%calc_surface_mach(this%freestream%P_free_to_stag, &
+                                                this%freestream%M_inf, this%freestream%gamma)
+
+            ! Calculate the surface velocity ratio
+            call body_mesh%panels(i)%calc_surface_velocity(this%freestream%M_inf, this%freestream%gamma)
+
+            ! Calculate velocity vectors
+            call body_mesh%panels(i)%calc_velocity_vector(v_inf)
+
+        end do
+
+    end subroutine panel_solver_surface_velocities
 
 end module panel_solver_mod

@@ -345,7 +345,7 @@ module vtk_mod
         write(unit, '(a, a, a)') "SCALARS ", "Mach_surface", " float 1"
         write(unit, '(a)') "LOOKUP_TABLE default"
         do i = 1, N_panels
-            write(unit, '(e20.12)') panels(i)%m_surf
+            write(unit, '(e20.12)') panels(i)%M
         end do
 
         ! Write seperation

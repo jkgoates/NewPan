@@ -39,8 +39,6 @@ module surface_mesh_mod
         ! Initialization Based on flow
         procedure :: init_with_flow => surface_mesh_init_with_flow
 
-        ! Surface 
-
 
 
     end type surface_mesh
@@ -341,13 +339,6 @@ contains
 
         real, dimension(3) :: v_inf
         integer :: i
-
-        ! Calculate Surface velocity directions
-        v_inf = reshape(freestream%v_inf, [3])
-        do i = 1, this%N_panels
-            call this%panels(i)%calc_velocity_vector(v_inf)
-        end do
-
 
     end subroutine surface_mesh_init_with_flow
 
