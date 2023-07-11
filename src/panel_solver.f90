@@ -4,6 +4,7 @@ module panel_solver_mod
     use flow_mod
     use surface_mesh_mod
     use math_mod
+    use linked_list_mod
 
     implicit none
     
@@ -36,6 +37,8 @@ module panel_solver_mod
 
             ! Surface property calculations
             procedure :: surface_velocities => panel_solver_surface_velocities
+            procedure :: point_velocities => panel_solver_point_velocities
+            procedure :: velocity_equations => panel_solver_velocity_equations
 
     end type panel_solver
 
@@ -90,6 +93,9 @@ contains
         class(panel_solver), intent(inout) :: this
         type(surface_mesh), intent(inout) :: body_mesh
 
+        write(*,*)
+        write(*,'(a)', advance='no') " Solving for inviscid pressures... "
+
         ! Calculate impact pressures
         select case (this%windward_method)
         case ('kaufman')
@@ -118,8 +124,17 @@ contains
             stop
         end select
 
+        write(*,*) "Done."
+
+
         ! Calculate pressure dependent properties
+        write(*,'(a)', advance='no') " Calculating surface properties... "
+
         call this%surface_velocities(body_mesh)
+        call this%point_velocities(body_mesh)
+        call this%velocity_equations(body_mesh)
+
+        write(*,*) "Done."
 
 
     end subroutine panel_solver_solve
@@ -309,11 +324,11 @@ contains
         do i = 1, body_mesh%N_panels
             
             ! Calculate the surface mach number
-            call body_mesh%panels(i)%calc_surface_mach(this%freestream%P_free_to_stag, &
+            call body_mesh%panels(i)%calc_centroid_mach(this%freestream%P_free_to_stag, &
                                                 this%freestream%M_inf, this%freestream%gamma)
 
             ! Calculate the surface velocity ratio
-            call body_mesh%panels(i)%calc_surface_velocity(this%freestream%M_inf, this%freestream%gamma)
+            call body_mesh%panels(i)%calc_centroid_velocity(this%freestream%M_inf, this%freestream%gamma)
 
             ! Calculate velocity vectors
             call body_mesh%panels(i)%calc_velocity_vector(v_inf)
@@ -321,5 +336,64 @@ contains
         end do
 
     end subroutine panel_solver_surface_velocities
+
+    subroutine panel_solver_point_velocities(this, body_mesh)
+
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
+
+        type(list) :: adj_panels
+
+        real, dimension(3) :: sum_num, sum_den
+
+        integer :: i, j, pan
+
+        ! Loop through vertices and calculate velocities
+        do i = 1, body_mesh%N_verts
+
+            adj_panels = body_mesh%vertices(i)%get_panels()
+
+            sum_num = 0
+            sum_den = 0
+
+            ! Loop through panels and sum up vertices
+            do j = 1, adj_panels%len()
+
+                call adj_panels%get(j,pan)
+                sum_num = sum_num + body_mesh%panels(pan)%velocity
+                sum_den = sum_den + 1
+
+            end do
+
+            body_mesh%vertices(i)%V = sum_num/sum_den
+        end do
+
+    end subroutine panel_solver_point_velocities
+
+
+    subroutine panel_solver_velocity_equations(this, body_mesh)
+
+        implicit none
+        
+        class(panel_solver), intent(inout) :: this
+        type(surface_mesh), intent(inout) :: body_mesh
+
+        type(panel), dimension(3) :: neighbors
+        integer :: i
+
+
+
+        ! Loop through panels and calculate the velocity equations
+        do i = 1, body_mesh%N_panels
+            neighbors = (/body_mesh%panels(body_mesh%panels(i)%abutting_panels(1)), &
+                          body_mesh%panels(body_mesh%panels(i)%abutting_panels(2)), &
+                          body_mesh%panels(body_mesh%panels(i)%abutting_panels(3))/)
+            call body_mesh%panels(i)%calc_velocity_equations(neighbors)
+        end do
+
+    end subroutine panel_solver_velocity_equations
+
 
 end module panel_solver_mod

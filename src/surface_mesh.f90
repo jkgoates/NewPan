@@ -29,6 +29,12 @@ module surface_mesh_mod
         procedure :: store_adjacent_vertices => surface_mesh_store_adjacent_vertices
         procedure :: check_panels_adjacent => surface_mesh_check_panels_adjacent
         procedure :: surface_fit => surface_mesh_surface_fit
+
+        ! Flow dependent Initialization
+        procedure :: define_dependent_direction => surface_mesh_define_dependent_direction
+
+        ! Getters
+        procedure :: get_avg_characteristic_panel_length => surface_mesh_get_avg_characteristic_panel_length
         
         ! Panel Shadowing
         procedure :: find_shadowed_panels => surface_mesh_find_shadowed_panels
@@ -69,6 +75,7 @@ contains
 
         ! Determine surface element equations
         call this%surface_fit()
+
 
     end subroutine surface_mesh_init
 
@@ -326,9 +333,9 @@ contains
 
         end do abutting_loop
 
-
-
     end function surface_mesh_check_panels_adjacent
+
+
 
     subroutine surface_mesh_init_with_flow(this, freestream)
 
@@ -340,7 +347,11 @@ contains
         real, dimension(3) :: v_inf
         integer :: i
 
+        call this%define_dependent_direction(freestream)
+
     end subroutine surface_mesh_init_with_flow
+
+
 
     subroutine surface_mesh_find_shadowed_panels(this, freestream)
 
@@ -354,18 +365,14 @@ contains
         ! Project the vertices and centroids onto the freestream
         call this%project(freestream)
 
-        ! Find possible intersections to simplify calculations
-        !call this%possible_panel_shadowing(freestream)
-
-        ! Determine overlap
-        !call this%panels_determine_overlap()
-
         ! Find the shadowed vertices
         call this%shadowed_vertices(freestream)
 
         write(*,*) "Done."
 
     end subroutine surface_mesh_find_shadowed_panels
+
+
 
     subroutine surface_mesh_project(this, freestream)
 
@@ -430,6 +437,8 @@ contains
         end do
 
     end subroutine surface_mesh_project
+
+
 
     subroutine surface_mesh_shadowed_vertices(this, freestream)
 
@@ -520,6 +529,7 @@ contains
 
     end subroutine surface_mesh_shadowed_vertices
 
+
     function surface_mesh_panel_over_point(this, pan, vert) result(shadowed)
         
         implicit none
@@ -589,8 +599,8 @@ contains
             shadowed = .false.
         end if
 
-        
     end function surface_mesh_panel_over_point
+
 
     subroutine surface_mesh_surface_fit(this)
         implicit none
@@ -601,12 +611,46 @@ contains
 
         ! Loop through panels and calc surface fit
         do i = 1, this%N_panels
-            call this%panels(i)%calc_surface_equation(this%vertices)
+            call this%panels(i)%calc_surface_equation()
 
         end do
 
-
     end subroutine surface_mesh_surface_fit
 
+
+    subroutine surface_mesh_define_dependent_direction(this,freestream)
+        implicit none
+
+        class(surface_mesh),intent(inout) :: this
+        type(flow), intent(in) :: freestream
+
+        integer :: i
+
+        ! Loop through panels and define the independent and dependent directions of the panel
+        do i = 1, this%N_panels
+            call this%panels(i)%define_dependent_direction(freestream)
+
+        end do
+    end subroutine surface_mesh_define_dependent_direction
+
+    function surface_mesh_get_avg_characteristic_panel_length(this) result(l_avg)
+        ! Returns the average characteristic length of the panels
+
+        implicit none
+        
+        class(surface_mesh), intent(in):: this
+
+        real :: l_avg
+
+        integer :: i
+
+        ! Loop through panels
+        l_avg = 0.
+        do i = 1, this%N_panels
+            l_avg = l_avg + this%panels(i)%get_characteristic_length()
+        end do
+        l_avg = l_avg/this%N_panels
+
+    end function surface_mesh_get_avg_characteristic_panel_length
 
 end module surface_mesh_mod

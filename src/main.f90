@@ -34,6 +34,8 @@ program main
     logical :: exists, found, verbose
     integer :: solver_stat
 
+    real, dimension(3) :: start_point, intersection_point
+    integer :: next_edge, next_panel, i
 
     ! Initialize json
     call json_initialize()
@@ -73,17 +75,17 @@ program main
     if (verbose) then
         ! Welcome message
         write(*,*) ""
-        write(*,*) "      ------------------------------"
-        write(*,*) "     -----/  ___  ------------------------"
-        write(*,*) "    -----/  /   \         " 
-        write(*,*) "   -----|  |      \                  "
+        write(*,*) "      -----/   ~ ~  ~  ~ ~  ~  ~ ~  ~ ~  ~"
+        write(*,*) "     -----/  ___      ~  ~    ~    ~     ~  ~"
+        write(*,*) "    -----/  /   \           ~         ~      " 
+        write(*,*) "   -----|  |      \              ~            ~  ~ "
         write(*,*) "  ------|  |   _    \     NewPan (c) 2023 USU Aerolab  "
         write(*,*) " -------|  |  |_|    )               v1.0"   
         write(*,*) "  ------|  |        /               "
-        write(*,*) "   -----|  |      /               "
-        write(*,*) "    -----\  \___/        " 
-        write(*,*) "     -----\       ------------------------"
-        write(*,*) "      -----------------------------"
+        write(*,*) "   -----|  |      /              ~            ~ "
+        write(*,*) "    -----\  \___/           ~         ~   " 
+        write(*,*) "     -----\           ~  ~    ~    ~     ~  ~"
+        write(*,*) "      -----\   ~   ~  ~ ~  ~  ~ ~  ~ ~  ~"
         write(*,*) ""
         write(*,*) "Got input file: ", input_file
         write(*,*) ""
@@ -132,6 +134,7 @@ program main
 
     ! Calculate force coefficients
     call solver%calc_forces(body_mesh)
+    write(*,*)
     write(*,'(a20)') "Force Coefficients:"
     write(*, '(a20, e14.6)') "  C_x:", body_mesh%C_f(1)
     write(*, '(a20, e14.6)') "  C_y:", body_mesh%C_f(2)
@@ -190,6 +193,23 @@ program main
     write(*,'(a, f10.4, a)') " NewPan Execution Time", runtime, " s"
 
     write(*,*)
+
+    ! Try Streamlines
+    start_point = body_mesh%panels(520)%centr
+    next_panel = 520
+    open(newunit=i_unit, file="streamline.csv", status='REPLACE')
+    write(i_unit, *) "x, y, z"
+    do i = 1, 500
+        call body_mesh%panels(next_panel)%calc_streamline(start_point, 0.001, intersection_point, next_edge)
+
+        write(i_unit, '(e20.12, a, e20.12, a, e20.12)') intersection_point(1), ',', &
+                                                        intersection_point(2), ',', intersection_point(3)
+        next_panel = body_mesh%edges(next_edge)%get_opposing_panel(next_panel)
+        if (body_mesh%panels(next_panel)%seperated) exit
+        start_point = intersection_point
+    end do
+    close(i_unit)
+
 
 
 end program main

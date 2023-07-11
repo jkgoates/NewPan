@@ -381,9 +381,9 @@ module vtk_mod
         end do
 
         ! Write Surface velocity
-        write(unit, '(a, a, a)') "VECTORS ", "u", " float"
+        write(unit, '(a, a, a)') "VECTORS ", "velocity", " float"
         do i = 1, N_panels
-            write(unit, '(e20.12, e20.12, e20.12)') panels(i)%u(1), panels(i)%u(2), panels(i)%u(3)
+            write(unit, '(e20.12, e20.12, e20.12)') panels(i)%velocity(1), panels(i)%velocity(2), panels(i)%velocity(3)
         end do
 
         ! Write inclination angle
@@ -391,6 +391,22 @@ module vtk_mod
         write(unit, '(a)') "LOOKUP_TABLE default"
         do i = 1, N_panels
             write(unit, '(e20.12)') panels(i)%theta
+        end do
+
+        ! Write Dependent direction
+        write(unit,'(a,a,a)') "SCALARS ", "dep", " float 1"
+        write(unit, '(a)') "LOOKUP_TABLE default"
+        do i = 1, N_panels
+            write(unit, '(i20)') panels(i)%dep
+        end do
+
+        ! Point Data Header
+        write(unit, '(a, i20)') "POINT_DATA", N_verts
+        
+        ! Point Velocities
+        write(unit, '(a, a, a)') "VECTORS ", "velocity ", " float"
+        do i = 1, N_verts
+            write(unit, '(e20.12, e20.12, e20.12)') vertices(i)%V(1), vertices(i)%V(2), vertices(i)%V(3)
         end do
 
         close(unit)

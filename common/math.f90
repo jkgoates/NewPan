@@ -3,6 +3,7 @@ module math_mod
     real, parameter :: pi = 3.14159265358979323846264338327950288419716939937510
     real, parameter :: pi2 = pi*0.5
     real, parameter :: inf = huge(0.)
+    real, parameter :: onesixth = 1.0/6.0
 contains
 
     function cross_product(v1, v2) result(cross)
@@ -17,5 +18,14 @@ contains
         cross(3) = v1(1) * v2(2) - v1(2) * v2(1)
     end function cross_product
 
-    
+    function magnitude(v) result(mag)
+
+        implicit none
+        
+        real, dimension(3), intent(in) :: v
+        real :: mag
+
+        mag = sqrt(v(1)**2 + v(2)**2 + v(3)**2)
+
+    end function magnitude
 end module math_mod

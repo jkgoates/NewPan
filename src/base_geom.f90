@@ -8,10 +8,15 @@ module base_geom_mod
     type vertex
         integer :: ind
         real, dimension(3) :: location
+        real, dimension(3) :: V
         logical :: shadowed = .false.
         type(list) :: adjacent_vertices ! List of indices of vertices for the vertices which share an edge with this vertex
         type(list) :: adjacent_edges ! List of indices for the edges which touch this vertex
         type(list) :: panels ! List of indices for the panels which connect to this vertex
+
+        contains
+
+        procedure :: get_panels => vertex_get_panels
 
     end type vertex
 
@@ -30,10 +35,25 @@ module base_geom_mod
         contains
 
         procedure :: init => edge_init
+        procedure :: get_opposing_panel => edge_get_opposing_panel
 
     end type edge
 
 contains
+
+    function vertex_get_panels(this) result(panels)
+
+        implicit none
+        
+        class(vertex), intent(inout) :: this
+        type(list) :: panels
+
+        panels = this%panels
+        
+
+
+    end function vertex_get_panels
+
 
     subroutine edge_init(this, i1, i2, top_panel, bottom_panel)
 
@@ -55,5 +75,27 @@ contains
         this%bot_verts = this%top_verts
 
     end subroutine edge_init
+
+
+    function edge_get_opposing_panel(this, i_panel) result(i_oppose)
+        ! Returns the index of the panel opposite this one on the edge
+
+        implicit none
+        
+        class(edge), intent(in) :: this
+        integer, intent(in) :: i_panel
+
+        integer :: i_oppose
+
+        if(i_panel == this%panels(1)) then
+            i_oppose = this%panels(2)
+        else if (i_panel == this%panels(2)) then
+            i_oppose = this%panels(1)
+        else
+            i_oppose = 0
+        end if
+
+    end function  edge_get_opposing_panel
+
 
 end module base_geom_mod
