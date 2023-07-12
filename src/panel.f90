@@ -20,6 +20,7 @@ module panel_mod
         integer, dimension(3) :: abutting_panels ! Indices of panels abutting this one
         integer, dimension(3) :: edges ! Indices of the edges of this panel
         logical :: seperated=.false.
+        integer :: order
 
         !! Panel equations
         real :: a1, a2, a3, a4=1.0 ! Surface Equation Coefficients F(x,y,z) = a1*x + a2*y + a3*z + a4 = 0
@@ -61,7 +62,8 @@ module panel_mod
         procedure :: calc_centroid_velocity => panel_calc_centroid_velocity
         procedure :: calc_velocity_vector => panel_calc_velocity_vector
 
-        ! Property equations
+        ! Property distributions
+        procedure :: set_distribution => panel_set_distribution
         procedure :: calc_surface_equation => panel_calc_surface_equation
         procedure :: calc_velocity_equations => panel_calc_velocity_equations
 
@@ -239,7 +241,7 @@ contains
 
         integer :: dep
 
-        if (abs(this%normal(maxloc(abs(this%normal),dim=1))) > abs(1*this%normal(maxloc(abs(freestream%v_inf),dim=1)))) then
+        if (abs(this%normal(maxloc(abs(this%normal),dim=1))) > abs(2*this%normal(maxloc(abs(freestream%v_inf),dim=1)))) then
             dep = maxloc(abs(this%normal),dim=1)
         else
             dep = maxloc(abs(freestream%v_inf), dim=1)
@@ -395,14 +397,39 @@ contains
 
         real, dimension(3) :: velocity
 
-        velocity(1) = this%b1*(point(this%indep(1))**2) + this%b2*point(this%indep(1)) + this%b3*(point(this%indep(2))**2) &
-                      + this%b4*point(this%indep(2)) + this%b5*point(this%indep(1))*point(this%indep(2)) + this%b6
-        velocity(2) = this%c1*(point(this%indep(1))**2) + this%c2*point(this%indep(1)) + this%c3*(point(this%indep(2))**2) &
-                      + this%c4*point(this%indep(2)) + this%c5*point(this%indep(1))*point(this%indep(2)) + this%c6
-        velocity(3) = this%d1*(point(this%indep(1))**2) + this%d2*point(this%indep(1)) + this%d3*(point(this%indep(2))**2) &
-                      + this%d4*point(this%indep(2)) + this%d5*point(this%indep(1))*point(this%indep(2)) + this%d6
+        ! Linear distribution
+        velocity(1) = this%b1 + this%b2*point(this%indep(1)) + this%b3*point(this%indep(2))
+        velocity(2) = this%c1 + this%c2*point(this%indep(1)) + this%c3*point(this%indep(2))
+        velocity(3) = this%d1 + this%d2*point(this%indep(1)) + this%d3*point(this%indep(2))
+
+        ! Second order
+        if (this%order == 2) then
+            velocity(1) = velocity(1) + this%b4*point(this%indep(1))**2 + this%b5*point(this%indep(2))**2 &
+                          + this%b6*point(this%indep(1))*point(this%indep(2))
+            velocity(2) = velocity(2) + this%c4*point(this%indep(1))**2 + this%c5*point(this%indep(2))**2 &
+                          + this%c6*point(this%indep(1))*point(this%indep(2))
+            velocity(3) = velocity(3) + this%d4*point(this%indep(1))**2 + this%d5*point(this%indep(2))**2 &
+                          + this%d6*point(this%indep(1))*point(this%indep(2))
+        end if
 
     end function panel_get_panel_velocity
+
+
+    subroutine panel_set_distribution(this, order)
+
+        implicit none
+        
+        class(panel), intent(inout) :: this
+        integer, intent(in) :: order
+        
+        if (any(this%abutting_panels == 0)) then
+            this%order = 1
+        else
+            this%order = order
+        end if
+
+
+    end subroutine
 
 
     subroutine panel_calc_surface_equation(this)
@@ -433,92 +460,114 @@ contains
         class(panel), intent(inout) :: this
         type(panel), dimension(3), intent(inout) :: neighbors
 
-        real, dimension(this%N*2, this%N*2) :: A, A_STORED
+        real, dimension(this%N*this%order, this%N*this%order) :: A, A_STORED
         real, dimension(:), allocatable :: xu, xv, xw
-        real, dimension(this%N*2) :: bu, bv, bw
+        real, dimension(this%N*this%order) :: bu, bv, bw
         real, dimension(this%N) :: loc, v1, v2, v3, v4, v5, v6
         integer :: i, j, k, neighbor_vert
         integer, dimension(3) :: extra_verts, this_verts
         type(panel) :: neighbor
 
-        this_verts = (/this%get_vertex_index(1), this%get_vertex_index(2), this%get_vertex_index(3)/)
+        if (this%order == 2) then
+            this_verts = (/this%get_vertex_index(1), this%get_vertex_index(2), this%get_vertex_index(3)/)
 
-        ! Find the unique vertex for the neighboring vertices
-        neighbors_loop: do i = 1, 3
-            neighbor = neighbors(i)
+            ! Find the unique vertex for the neighboring vertices
+            neighbors_loop: do i = 1, 3
+                neighbor = neighbors(i)
             
-            neighbor_verts: do j = 1, 3
-                neighbor_vert = neighbor%get_vertex_index(j)
+                neighbor_verts: do j = 1, 3
+                    neighbor_vert = neighbor%get_vertex_index(j)
 
-                if (any(this_verts == neighbor_vert)) then
-                    cycle neighbor_verts
-                else
-                    extra_verts(i) = j
-                    cycle neighbors_loop
-                end if
+                    if (any(this_verts == neighbor_vert)) then
+                        cycle neighbor_verts
+                    else
+                        extra_verts(i) = j
+                        cycle neighbors_loop
+                    end if
 
-            end do neighbor_verts
+                end do neighbor_verts
 
-        end do neighbors_loop
+            end do neighbors_loop
+        end if
 
         ! Retrieve point velocities
         v1 = this%get_vertex_velocity(1)
         v2 = this%get_vertex_velocity(2)
         v3 = this%get_vertex_velocity(3)
-        v4 = neighbors(1)%get_vertex_velocity(extra_verts(1))
-        v5 = neighbors(2)%get_vertex_velocity(extra_verts(2))
-        v6 = neighbors(3)%get_vertex_velocity(extra_verts(3))
+        if (this%order == 2) then
+            v4 = neighbors(1)%get_vertex_velocity(extra_verts(1))
+            v5 = neighbors(2)%get_vertex_velocity(extra_verts(2))
+            v6 = neighbors(3)%get_vertex_velocity(extra_verts(3))
+        end if
 
         ! Fill A matrix
 
-        do j = 1, this%N*2
+        do j = 1, this%N*this%order
             if (j <= this%N) loc = this%get_vertex_loc(j)
-            if (j > this%N) loc = neighbors(j-this%N)%get_vertex_loc(extra_verts(j-this%N))
+            if (this%order == 2) then
+                if (j > this%N) loc = neighbors(j-this%N)%get_vertex_loc(extra_verts(j-this%N))
+            end if
 
-            A(j,1) = loc(this%indep(1))**2
+            if (any(loc == 0.0)) loc = loc + 1e-12
+
+            A(j,1) = 1
             A(j,2) = loc(this%indep(1))
-            A(j,3) = loc(this%indep(2))**2
-            A(j,4) = loc(this%indep(2))
-            A(j,5) = loc(this%indep(1))*loc(this%indep(2))
-            A(j,6) = 1
+            A(j,3) = loc(this%indep(2))
+            if (this%order ==2) then 
+                A(j,4) = loc(this%indep(1))**2
+                A(j,5) = loc(this%indep(2))**2
+                A(j,6) = loc(this%indep(1))*loc(this%indep(2))
+            end if
         end do
 
 
         ! Fill b vectors
-        bu = (/v1(1),v2(1),v3(1),v4(1),v5(1),v6(1)/)
-        bv = (/v1(2),v2(2),v3(2),v4(2),v5(2),v6(2)/)
-        bw = (/v1(3),v2(3),v3(3),v4(3),v5(3),v6(3)/)
+        if (this%order == 2) then
+            bu = (/v1(1),v2(1),v3(1),v4(1),v5(1),v6(1)/)
+            bv = (/v1(2),v2(2),v3(2),v4(2),v5(2),v6(2)/)
+            bw = (/v1(3),v2(3),v3(3),v4(3),v5(3),v6(3)/)
+        else
+            bu = (/v1(1),v2(1),v3(1)/)
+            bv = (/v1(2),v2(2),v3(2)/)
+            bw = (/v1(3),v2(3),v3(3)/)
+        end if
 
 
         ! Solve
         A_STORED = A
-        call lu_solve(this%N*2, A, bu, xu)
+        call lu_solve(this%N*this%order, A, bu, xu)
         A = A_STORED
-        call lu_solve(this%N*2, A, bv, xv)
+        call lu_solve(this%N*this%order, A, bv, xv)
         A = A_STORED
-        call lu_solve(this%N*2, A, bw, xw)
+        call lu_solve(this%N*this%order, A, bw, xw)
 
         ! Get coefficients
         this%b1 = xu(1)
         this%b2 = xu(2)
         this%b3 = xu(3)
-        this%b4 = xu(4)
-        this%b5 = xu(5)
-        this%b6 = xu(6)
+        if (this%order == 2) then
+            this%b4 = xu(4)
+            this%b5 = xu(5)
+            this%b6 = xu(6)
+        end if
 
         this%c1 = xv(1)
         this%c2 = xv(2)
         this%c3 = xv(3)
-        this%c4 = xv(4)
-        this%c5 = xv(5)
-        this%c6 = xv(6)
+        if (this%order == 2) then
+            this%c4 = xv(4)
+            this%c5 = xv(5)
+            this%c6 = xv(6)
+        end if
 
         this%d1 = xw(1)
         this%d2 = xw(2)
         this%d3 = xw(3)
-        this%d4 = xw(4)
-        this%d5 = xw(5)
-        this%d6 = xw(6)
+        if (this%order == 2) then
+            this%d4 = xw(4)
+            this%d5 = xw(5)
+            this%d6 = xw(6)
+        end if
 
     end subroutine panel_calc_velocity_equations
 
@@ -559,7 +608,7 @@ contains
 
         integer :: i, stat, point_stat
 
-        write(*,*) "Panel: ", this%index
+        !write(*,*) "Panel: ", this%index
 
         call this%restrict_point_to_panel(start_point)
         ! Ensure start point is in the panel boundary
@@ -595,7 +644,7 @@ contains
                             " on panel ", this%index, ". Quitting..."
                 stop
             else if (point_stat == 0) then
-                write(*,*) "Point: ", next_point
+                !write(*,*) "Point: ", next_point
                 previous_point = next_point
                 cycle
             else
@@ -649,9 +698,9 @@ contains
                                this%get_vertex_loc(i+1)-point),this%normal)
                 end if
             end do
-            write(*,*) "Velocity: ", this%get_panel_velocity(point)
-            write(*,*) "Delta: ", delta
-            write(*,*)
+            !write(*,*) "Velocity: ", this%get_panel_velocity(point)
+            !write(*,*) "Delta: ", delta
+            !write(*,*)
 
             if (delta(1) >= 0.0 .and. delta(2) >= 0.0 .and. delta(3) >= 0.0) then
                 stat = 0
@@ -716,7 +765,9 @@ contains
             ! Fill A Matrix
             do j = 1, 2
                 A(j, 1) = vert2(this%indep(j)) - vert1(this%indep(j))
+                if (A(j,1) == 0.0) A(j,1) = A(j,1) + 1e-12
                 A(j, 2) = p1(this%indep(j)) - p2(this%indep(j))
+                if (A(j,2) == 0.0) A(j,2) = A(j,2) + 1e-12
             end do
 
             ! b vector
@@ -729,9 +780,9 @@ contains
             ! Check if it worked...
             check = x(1) * (vert2 - vert1) + x(2) * (p1-p2) - (p1 - vert1)
 
-            write(*,*) "Check: ", check
-            write(*,*) x
-            write(*,*)
+            !!write(*,*) "Check: ", check
+            !write(*,*) x
+            !write(*,*)
             
             if (all(abs(check) < 1e-12)) then
                 ! Make sure the intersection is on the edge and vector
@@ -747,9 +798,9 @@ contains
                 stat = 1
             end if
         end do
-        write(*,*)
-        write(*,*)
-        write(*,*)
+        !write(*,*)
+        !write(*,*)
+        !write(*,*)
 
 
 

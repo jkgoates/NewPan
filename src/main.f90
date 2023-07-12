@@ -81,7 +81,7 @@ program main
         write(*,*) "   -----|  |      \              ~            ~  ~ "
         write(*,*) "  ------|  |   _    \     NewPan (c) 2023 USU Aerolab  "
         write(*,*) " -------|  |  |_|    )               v1.0"   
-        write(*,*) "  ------|  |        /               "
+        write(*,*) "  ------|  |        /                  ~"
         write(*,*) "   -----|  |      /              ~            ~ "
         write(*,*) "    -----\  \___/           ~         ~   " 
         write(*,*) "     -----\           ~  ~    ~    ~     ~  ~"
@@ -158,6 +158,24 @@ program main
     call json_value_add(p_parent, 'C_z', body_mesh%C_f(3))
     nullify(p_parent)
 
+    ! Try Streamlines
+    start_point = body_mesh%panels(2861)%centr
+    next_panel = 2861
+    open(newunit=i_unit, file="streamline.csv", status='REPLACE')
+    write(i_unit, *) "x, y, z"
+    do i = 1, 150
+        call body_mesh%panels(next_panel)%calc_streamline(start_point, 0.01, intersection_point, next_edge)
+
+        write(i_unit, '(e20.12, a, e20.12, a, e20.12)') intersection_point(1), ',', &
+                                                        intersection_point(2), ',', intersection_point(3)
+        next_panel = body_mesh%edges(next_edge)%get_opposing_panel(next_panel)
+        if (next_panel == 0) exit
+        if (body_mesh%panels(next_panel)%seperated) exit
+        start_point = intersection_point
+    end do
+    close(i_unit)
+
+
     ! Find Time
     call system_clock(end_count)
     runtime = real(end_count - start_count)/count_rate
@@ -195,20 +213,21 @@ program main
     write(*,*)
 
     ! Try Streamlines
-    start_point = body_mesh%panels(520)%centr
-    next_panel = 520
-    open(newunit=i_unit, file="streamline.csv", status='REPLACE')
-    write(i_unit, *) "x, y, z"
-    do i = 1, 500
-        call body_mesh%panels(next_panel)%calc_streamline(start_point, 0.001, intersection_point, next_edge)
+    !start_point = body_mesh%panels(1907)%centr
+    !next_panel = 1907
+    !open(newunit=i_unit, file="streamline.csv", status='REPLACE')
+    !write(i_unit, *) "x, y, z"
+    !do i = 1, 150
+        !call body_mesh%panels(next_panel)%calc_streamline(start_point, 0.01, intersection_point, next_edge)
 
-        write(i_unit, '(e20.12, a, e20.12, a, e20.12)') intersection_point(1), ',', &
-                                                        intersection_point(2), ',', intersection_point(3)
-        next_panel = body_mesh%edges(next_edge)%get_opposing_panel(next_panel)
-        if (body_mesh%panels(next_panel)%seperated) exit
-        start_point = intersection_point
-    end do
-    close(i_unit)
+        !write(i_unit, '(e20.12, a, e20.12, a, e20.12)') intersection_point(1), ',', &
+                                                        !intersection_point(2), ',', intersection_point(3)
+        !next_panel = body_mesh%edges(next_edge)%get_opposing_panel(next_panel)
+        !if (next_panel == 0) exit
+        !if (body_mesh%panels(next_panel)%seperated) exit
+        !start_point = intersection_point
+    !end do
+    !close(i_unit)
 
 
 

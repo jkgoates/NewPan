@@ -19,6 +19,8 @@ module surface_mesh_mod
         !real, dimension(:), allocatable :: dC_f ! Forces
         real, dimension(3) :: C_f=[0,0,0] ! Forces
         real :: S_ref ! Reference parameters
+        integer :: panel_order ! Distribution order for the panels
+        character(len=:), allocatable :: distribution_order
 
         contains
 
@@ -69,6 +71,25 @@ contains
 
         ! Store settings
         call json_xtnsn_get(settings, 'reference.area', this%S_ref, 1.)
+
+        ! Set singularity order
+        call json_xtnsn_get(settings, 'order', this%distribution_order, default_value='lower')
+        select case (this%distribution_order)
+
+        case ('lower')
+            write(*,*) "    User has selected linear surface property distributions."
+            this%panel_order = 1
+
+        case ('higher')
+            write(*,*) "    User has selected quadratic surface property distributions."
+            this%panel_order = 2
+
+        case default
+            write(*,*) "!!! ", this%distribution_order, " is not a valid singularity order. Defaulting to 'lower'."
+            this%distribution_order = 'lower'
+            this%panel_order = 1
+
+        end select
 
         ! Locate adjacent panels
         call this%locate_adjacent_panels()
@@ -348,6 +369,10 @@ contains
         integer :: i
 
         call this%define_dependent_direction(freestream)
+
+        do i = 1, this%N_panels
+            call this%panels(i)%set_distribution(this%panel_order)
+        end do
 
     end subroutine surface_mesh_init_with_flow
 

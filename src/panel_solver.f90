@@ -383,13 +383,17 @@ contains
         type(panel), dimension(3) :: neighbors
         integer :: i
 
-
-
         ! Loop through panels and calculate the velocity equations
         do i = 1, body_mesh%N_panels
-            neighbors = (/body_mesh%panels(body_mesh%panels(i)%abutting_panels(1)), &
-                          body_mesh%panels(body_mesh%panels(i)%abutting_panels(2)), &
-                          body_mesh%panels(body_mesh%panels(i)%abutting_panels(3))/)
+            if (any(body_mesh%panels(i)%abutting_panels == 0)) then
+                neighbors = (/body_mesh%panels(i), &
+                            body_mesh%panels(i), &
+                            body_mesh%panels(i)/)
+            else 
+                neighbors = (/body_mesh%panels(body_mesh%panels(i)%abutting_panels(1)), &
+                            body_mesh%panels(body_mesh%panels(i)%abutting_panels(2)), &
+                            body_mesh%panels(body_mesh%panels(i)%abutting_panels(3))/)
+            end if
             call body_mesh%panels(i)%calc_velocity_equations(neighbors)
         end do
 
